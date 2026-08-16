@@ -36,6 +36,9 @@ SET_LABELS = {
     "comparator_set": "Comparator Set",
     "general": "General",
 }
+REGION_LABELS = {
+    "Kuala Lumpur": "KL",
+}
 
 
 st.set_page_config(page_title="Real Estate Project Monitor", page_icon="🏢", layout="wide")
@@ -250,6 +253,11 @@ def display_timestamp(value: object) -> str:
     return parsed.strftime("%d %b %Y, %I:%M %p")
 
 
+def region_label(value: object) -> str:
+    text = str(value or "—")
+    return REGION_LABELS.get(text, text)
+
+
 def dataframe(rows: list[dict[str, str]]) -> pd.DataFrame:
     frame = pd.DataFrame(rows)
     if not frame.empty and "region" not in frame.columns:
@@ -364,6 +372,7 @@ with overview_tab:
             region_options,
             horizontal=True,
             key="overview_region",
+            format_func=region_label,
         )
         view = (
             current
@@ -390,6 +399,8 @@ with overview_tab:
             risk_mask,
             risk_columns,
         ].copy()
+        if "region" in risk.columns:
+            risk["region"] = risk["region"].map(region_label)
         if risk.empty:
             st.success("No current Sakit, Lewat or cancelled statuses.")
         else:
@@ -417,19 +428,21 @@ with overview_tab:
         snapshot["sold_display"] = snapshot["sold_units"].map(whole_number)
         snapshot["units_display"] = snapshot["reported_total_units"].map(whole_number)
         snapshot["potential_gdv_display"] = snapshot["potential_listed_gdv"].map(money)
-        snapshot["first_spa_display"] = snapshot["first_spa_date"].map(display_date)
+        snapshot["region_display"] = snapshot["region"].map(region_label)
+        snapshot["project_set_display"] = (
+            snapshot["project_set"].map(SET_LABELS).fillna(snapshot["project_set"])
+        )
         overview_columns = [
             "display_name",
-            "region",
-            "developer_or_parent_group",
-            "project_set",
+            "region_display",
             "project_status",
-            "first_spa_display",
             "sold_display",
             "units_display",
             "sales_percentage",
             "construction_percentage",
+            "developer_or_parent_group",
             "potential_gdv_display",
+            "project_set_display",
         ]
         snapshot_event = st.dataframe(
             snapshot[overview_columns],
@@ -441,11 +454,10 @@ with overview_tab:
             selection_default={"selection": {"rows": [0]}},
             column_config={
                 "display_name": "Project",
-                "region": "Region",
+                "region_display": "Region",
                 "developer_or_parent_group": "Parent group / developer",
-                "project_set": "Project set",
+                "project_set_display": "Project set",
                 "project_status": "TEDUH status",
-                "first_spa_display": "First SPA",
                 "sold_display": "Sold",
                 "units_display": "Units",
                 "sales_percentage": st.column_config.ProgressColumn("Sales", min_value=0, max_value=100, format="%.1f%%"),
@@ -468,7 +480,7 @@ with overview_tab:
             with st.container(border=True, key="project_detail_panel"):
                 identity_region, identity_left, identity_middle, identity_right = st.columns(4)
                 identity_region.markdown("**Region**")
-                identity_region.write(str(selected.get("region") or "—"))
+                identity_region.write(region_label(selected.get("region")))
                 identity_left.markdown("**Parent group**")
                 identity_left.write(parent_group or "Not mapped")
                 identity_middle.markdown("**Registered developer / SPV**")
@@ -664,10 +676,12 @@ with shortlist_tab:
             watch_regions,
             horizontal=True,
             key="shortlist_region",
+            format_func=region_label,
         )
         if watch_region != "All regions":
             shortlist_frame = shortlist_frame[shortlist_frame["region"] == watch_region]
         shortlist_frame["project_set"] = shortlist_frame["project_set"].map(SET_LABELS).fillna(shortlist_frame["project_set"])
+        shortlist_frame["region_display"] = shortlist_frame["region"].map(region_label)
         shortlist_frame["display_name"] = shortlist_frame.apply(
             lambda row: row["display_name"]
             or registry_name_by_code.get(str(row["source_project_id"]), "")
@@ -676,13 +690,13 @@ with shortlist_tab:
         )
         st.dataframe(
             shortlist_frame[
-                ["source_project_id", "region", "display_name", "parent_group", "project_set", "priority", "active", "tracking_notes"]
+                ["source_project_id", "region_display", "display_name", "parent_group", "project_set", "priority", "active", "tracking_notes"]
             ],
             hide_index=True,
             width="stretch",
             column_config={
                 "source_project_id": "TEDUH code",
-                "region": "Region",
+                "region_display": "Region",
                 "display_name": "Display name (local or TEDUH)",
                 "parent_group": "Parent group",
                 "project_set": "Project set",
@@ -722,6 +736,7 @@ with add_tab:
             "Region",
             list(REGION_CONFIGS),
             index=list(REGION_CONFIGS).index(default.get("region", DEFAULT_REGION)),
+            format_func=region_label,
         )
         project_set = fourth.selectbox(
             "Project set",
@@ -798,7 +813,9 @@ with add_tab:
 with discovery_tab:
     st.subheader("On-demand regional discovery")
     st.caption("Discovery can make at most one live catalogue request set per region each day. A second run reuses that region's same-day cache.")
-    discovery_region = st.selectbox("Region", list(REGION_CONFIGS), key="discovery_region")
+    discovery_region = st.selectbox(
+        "Region", list(REGION_CONFIGS), key="discovery_region", format_func=region_label
+    )
     manifest_path = discovery_manifest_path(SETTINGS, discovery_region)
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -903,9 +920,11 @@ with alerts_tab:
             ["All regions"] + list(REGION_CONFIGS),
             horizontal=True,
             key="alerts_region",
+            format_func=region_label,
         )
         if alert_region != "All regions":
             alerts = alerts[alerts["region"] == alert_region]
+        alerts["region"] = alerts["region"].map(region_label)
         alerts["_rank"] = alerts["severity"].map(severity_order).fillna(9)
         alerts = alerts.sort_values(["_rank", "display_name"]).drop(columns="_rank")
         st.dataframe(
