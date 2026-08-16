@@ -202,6 +202,14 @@ st.markdown(
         border-radius: 5px;
         color: var(--ocbc-charcoal);
     }
+    .creator-footer {
+        border-top: 1px solid var(--ocbc-border);
+        color: var(--ocbc-muted);
+        font-size: .72rem;
+        margin-top: 2.5rem;
+        padding-top: .75rem;
+        text-align: right;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -1047,3 +1055,8 @@ with audit_tab:
                 "new_value": "New value",
             },
         )
+
+st.markdown(
+    '<div class="creator-footer">Concept and prototype by Lim Ri Jun</div>',
+    unsafe_allow_html=True,
+)
