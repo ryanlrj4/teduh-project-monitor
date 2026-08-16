@@ -81,6 +81,7 @@ The older full-universe proof command remains available as `teduh_phase2.cli run
 - Project-change audit log: `data/audit/project_changes.csv` (created on the first new addition or edit)
 - Exactly five validation rows: `data/processed/shortlist_validation_sample.csv`
 - Beginner operating guide: `docs/PHASE3_GUIDE.md`
+- Modernisation technical pitch: `docs/MODERNISATION_TECHNICAL_PITCH.md`
 
 ## Safety behavior
 
