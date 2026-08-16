@@ -1,0 +1,11 @@
+﻿snapshot_date,region,severity,alert_code,source_project_id,display_name,message
+2026-08-16,Kuala Lumpur,critical,status_sakit,4131-139,SOLASTA DUTAMAS,Current TEDUH status is Sakit
+2026-08-16,Kuala Lumpur,critical,status_sakit,30648-1,Vila Setara,Current TEDUH status is Sakit
+2026-08-16,Penang,high,status_lewat,30555-1,Eden at Botanica CT,Current TEDUH status is Lewat
+2026-08-16,Kuala Lumpur,high,status_lewat,11611-2,Miranda Hills,Current TEDUH status is Lewat
+2026-08-16,Kuala Lumpur,info,construction_unavailable,30777-1,Asa Residence,Potential double-counted construction groups
+2026-08-16,Kuala Lumpur,info,construction_unavailable,31332-1,Binastra Cochrane,Potential double-counted construction groups
+2026-08-16,Kuala Lumpur,info,construction_unavailable,30667-1,Park Green Bukit Jalil,Potential double-counted construction groups
+2026-08-16,Kuala Lumpur,info,construction_unavailable,4131-139,SOLASTA DUTAMAS,Potential double-counted construction groups
+2026-08-16,Kuala Lumpur,info,construction_unavailable,19221-3,Stellaris,Potential double-counted construction groups
+2026-08-16,Kuala Lumpur,info,construction_unavailable,30513-1,Tuju Residence,Potential double-counted construction groups

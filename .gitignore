@@ -1,0 +1,27 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.DS_Store
+.idea/
+.vscode/
+tmp/
+
+data/raw/**
+!data/raw/.gitkeep
+data/interim/**
+!data/interim/.gitkeep
+
+# Keep only the compact, human-readable dashboard state in GitHub. The larger
+# Phase 2 proof outputs and Parquet copies can be regenerated when required.
+data/processed/*
+!data/processed/.gitkeep
+!data/processed/shortlist_current.csv
+!data/processed/shortlist_alerts.csv
+!data/processed/shortlist_validation_sample.csv
+data/history/*
+!data/history/.gitkeep
+!data/history/shortlist_history.csv
