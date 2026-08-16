@@ -11,4 +11,4 @@ if [ ! -x ".venv/bin/python" ]; then
   exit 1
 fi
 
-exec ".venv/bin/python" -m streamlit run "src/teduh_phase2/app.py" --server.headless true --server.port 8501
+exec ".venv/bin/python" -m streamlit run "src/teduh_phase2/app.py" --server.headless true --server.address 127.0.0.1 --server.port 8501

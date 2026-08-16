@@ -24,6 +24,7 @@ from teduh_phase2.metrics import component_completion_dates
 from teduh_phase2.shortlist import (
     PROJECT_SETS,
     PRIORITIES,
+    load_audit_log,
     load_shortlist,
     upsert_shortlist_project,
 )
@@ -100,6 +101,17 @@ st.markdown(
         font-size: 1.15rem !important;
         line-height: 1.3 !important;
     }
+    .st-key-manual_project_details {
+        background: var(--ocbc-surface);
+        border-left: 4px solid var(--ocbc-muted);
+        border-radius: 5px;
+        padding: .75rem 1rem .4rem;
+        margin: .65rem 0 1rem;
+    }
+    .st-key-manual_project_details [data-testid="stMetric"] {
+        background: var(--ocbc-white);
+        border-top-color: var(--ocbc-muted);
+    }
 
     div.stButton button, div.stDownloadButton button, [data-testid="stFormSubmitButton"] button {
         min-height: 2.7rem;
@@ -119,18 +131,21 @@ st.markdown(
         color: var(--ocbc-red-dark);
         background: #FFF5F5;
     }
-    button[kind="primary"], [data-testid="stFormSubmitButton"] button {
+    div.stButton button[kind="primary"],
+    [data-testid="stFormSubmitButton"] button[kind="primary"] {
         color: var(--ocbc-white) !important;
-        background: var(--ocbc-red);
-        border-color: var(--ocbc-red);
+        background: var(--ocbc-red) !important;
+        border-color: var(--ocbc-red) !important;
     }
-    button[kind="primary"] p,
-    [data-testid="stFormSubmitButton"] button p {color: var(--ocbc-white) !important;}
-    button[kind="primary"]:hover,
-    [data-testid="stFormSubmitButton"] button:hover {
+    div.stButton button[kind="primary"] p,
+    [data-testid="stFormSubmitButton"] button[kind="primary"] p {
         color: var(--ocbc-white) !important;
-        background: var(--ocbc-red-dark);
-        border-color: var(--ocbc-red-dark);
+    }
+    div.stButton button[kind="primary"]:hover,
+    [data-testid="stFormSubmitButton"] button[kind="primary"]:hover {
+        color: var(--ocbc-white) !important;
+        background: var(--ocbc-red-dark) !important;
+        border-color: var(--ocbc-red-dark) !important;
     }
 
     [data-baseweb="tab-list"] {
@@ -310,6 +325,7 @@ st.markdown('<div class="app-kicker">Commercial Banking · Real Estate</div>', u
 st.markdown('<div class="app-title">Real Estate Project Monitor</div>', unsafe_allow_html=True)
 
 shortlist_rows = load_shortlist(SETTINGS)
+audit_rows = load_audit_log(SETTINGS)
 current_rows = read_csv(current_metrics_path(SETTINGS))
 shortlist_by_project = {row["source_project_id"]: row for row in shortlist_rows}
 for current_row in current_rows:
@@ -351,17 +367,14 @@ app_notice = st.session_state.pop("app_notice", None)
 if app_notice:
     st.success(app_notice)
 
-overview_tab, shortlist_tab, add_tab, discovery_tab, alerts_tab = st.tabs(
-    ["Overview", "Shortlist", "Add or edit", "Discovery", "Alerts"]
+overview_tab, shortlist_tab, add_tab, discovery_tab, alerts_tab, audit_tab = st.tabs(
+    ["Overview", "Shortlist", "Add or edit", "Discovery", "Alerts", "Audit log"]
 )
 
 with overview_tab:
     if current.empty:
         st.info("The authorized starter shortlist is ready. Run the first shortlist refresh to populate TEDUH metrics.")
-        cols = st.columns(3)
-        cols[0].metric("Active shortlist", len(active_shortlist))
-        cols[1].metric("Parent groups mapped", sum(bool(row["parent_group"]) for row in active_shortlist))
-        cols[2].metric("Current observations", 0)
+        st.caption(f"Tracking {len(active_shortlist):,} projects")
     else:
         observed_regions = set(current["region"].dropna().astype(str))
         region_options = ["All regions"] + [
@@ -379,17 +392,8 @@ with overview_tab:
             if selected_region == "All regions"
             else current[current["region"] == selected_region]
         )
-        sold = view["sold_units"].sum(min_count=1)
-        comparable = view["comparable_total_units"].sum(min_count=1)
-        portfolio_sales = sold / comparable * 100 if comparable else None
+        st.caption(f"Tracking {len(view):,} projects")
         risk_mask = view["project_status"].fillna("").str.casefold().str.contains("sakit|lewat|batal")
-        completed_mask = view["ccc_obtained"].eq("Yes")
-        columns = st.columns(5)
-        columns[0].metric("Tracked projects", len(view))
-        columns[1].metric("Portfolio sales", pct(portfolio_sales))
-        columns[2].metric("Reported sold", f"{int(sold):,}" if pd.notna(sold) else "—")
-        columns[3].metric("Risk statuses", int(risk_mask.sum()))
-        columns[4].metric("CCC/CFO obtained", int(completed_mask.sum()))
 
         st.subheader("Projects needing attention")
         risk_columns = ["display_name", "parent_group", "project_status", "sales_percentage", "construction_percentage"]
@@ -434,13 +438,13 @@ with overview_tab:
         )
         overview_columns = [
             "display_name",
+            "developer_or_parent_group",
             "region_display",
             "project_status",
             "sold_display",
             "units_display",
             "sales_percentage",
             "construction_percentage",
-            "developer_or_parent_group",
             "potential_gdv_display",
             "project_set_display",
         ]
@@ -488,6 +492,7 @@ with overview_tab:
                 identity_right.markdown("**TEDUH project code**")
                 identity_right.write(str(selected.get("source_project_id") or "—"))
 
+                st.markdown("#### TEDUH project information")
                 market_details = st.columns(2)
                 market_details[0].metric("First SPA", display_date(selected.get("first_spa_date")))
                 market_details[1].metric(
@@ -510,37 +515,45 @@ with overview_tab:
                     selected.get("manual_psf_max")
                 )
                 if has_manual_launch or has_manual_built_up or has_manual_psf:
-                    st.markdown("#### Manually entered project details")
-                    manual_columns = st.columns(
-                        int(has_manual_launch) + int(has_manual_built_up) + int(has_manual_psf)
-                    )
-                    manual_index = 0
-                    if has_manual_launch:
-                        manual_columns[manual_index].metric(
-                            "Launch date (manual)", display_date(selected.get("manual_launch_date"))
+                    with st.container(key="manual_project_details"):
+                        st.markdown("#### Locally entered supplementary details")
+                        st.caption(
+                            "Only the fields inside this grey section were entered locally; they do not come from TEDUH."
                         )
-                        manual_index += 1
-                    if has_manual_built_up:
-                        manual_columns[manual_index].metric(
-                            "Built-up range",
-                            numeric_range(
-                                selected.get("manual_built_up_min_sqft"),
-                                selected.get("manual_built_up_max_sqft"),
-                                suffix=" sqft",
-                            ),
+                        manual_columns = st.columns(
+                            int(has_manual_launch) + int(has_manual_built_up) + int(has_manual_psf)
                         )
-                        manual_index += 1
-                    if has_manual_psf:
-                        manual_columns[manual_index].metric(
-                            "PSF range",
-                            numeric_range(
-                                selected.get("manual_psf_min"),
-                                selected.get("manual_psf_max"),
-                                prefix="RM ",
-                                suffix="/sqft",
-                            ),
-                        )
-                    st.caption("These optional values were entered locally and do not come from TEDUH.")
+                        manual_index = 0
+                        if has_manual_launch:
+                            manual_columns[manual_index].metric(
+                                "Launch date", display_date(selected.get("manual_launch_date"))
+                            )
+                            manual_index += 1
+                        if has_manual_built_up:
+                            manual_columns[manual_index].metric(
+                                "Built-up range",
+                                numeric_range(
+                                    selected.get("manual_built_up_min_sqft"),
+                                    selected.get("manual_built_up_max_sqft"),
+                                    suffix=" sqft",
+                                ),
+                            )
+                            manual_index += 1
+                        if has_manual_psf:
+                            manual_columns[manual_index].metric(
+                                "PSF range",
+                                numeric_range(
+                                    selected.get("manual_psf_min"),
+                                    selected.get("manual_psf_max"),
+                                    prefix="RM ",
+                                    suffix="/sqft",
+                                ),
+                            )
+
+                st.markdown("#### Current monitoring metrics")
+                st.caption(
+                    "The figures below come from the current TEDUH snapshot or are calculated from its unit and component data."
+                )
 
                 value_top = st.columns(2)
                 value_top[0].metric("Potential listed GDV", money(selected.get("potential_listed_gdv")))
@@ -643,28 +656,11 @@ with overview_tab:
                     )
 
 with shortlist_tab:
-    heading, action = st.columns([3, 1])
-    with heading:
-        st.subheader("Saved projects")
-        st.caption(
-            "The display name, parent group, project set and notes are yours to edit. "
-            "The weekly collection target is Monday, and manual refresh remains available."
-        )
-    with action:
-        refresh_clicked = st.button("Refresh TEDUH shortlist", type="primary", width="stretch")
-    if refresh_clicked:
-        progress_messages: list[str] = []
-        try:
-            with st.spinner("Refreshing active projects sequentially from TEDUH…"):
-                result = snapshot_shortlist(SETTINGS, progress=progress_messages.append)
-            st.session_state["app_notice"] = (
-                f"Refresh completed: {result['project_count']} projects and {result['alert_count']} alerts."
-            )
-            st.rerun()
-        except Exception as exc:  # Streamlit must surface source failures without replacing valid output.
-            st.error(str(exc))
-            if progress_messages:
-                st.caption(progress_messages[-1])
+    st.subheader("Saved projects")
+    st.caption(
+        "The display name, parent group, project set and notes are yours to edit. "
+        "The weekly collection target is Monday, and manual refresh remains available."
+    )
 
     shortlist_frame = pd.DataFrame(shortlist_rows)
     if shortlist_frame.empty:
@@ -705,6 +701,23 @@ with shortlist_tab:
                 "tracking_notes": "Your notes",
             },
         )
+    st.divider()
+    refresh_spacer, refresh_action = st.columns([3, 1])
+    with refresh_action:
+        refresh_clicked = st.button("Refresh TEDUH shortlist", type="primary", width="stretch")
+    if refresh_clicked:
+        progress_messages: list[str] = []
+        try:
+            with st.spinner("Refreshing active projects sequentially from TEDUH…"):
+                result = snapshot_shortlist(SETTINGS, progress=progress_messages.append)
+            st.session_state["app_notice"] = (
+                f"Refresh completed: {result['project_count']} projects and {result['alert_count']} alerts."
+            )
+            st.rerun()
+        except Exception as exc:  # Streamlit must surface source failures without replacing valid output.
+            st.error(str(exc))
+            if progress_messages:
+                st.caption(progress_messages[-1])
 
 with add_tab:
     st.subheader("Add or edit a tracked project")
@@ -774,41 +787,52 @@ with add_tab:
         )
         notes = st.text_area("Your monitoring notes", value=default.get("tracking_notes", ""), help="This is your own internal note; no CHGP analyst notes are imported.")
         active = st.checkbox("Actively refresh this project", value=default.get("active", "Yes") == "Yes")
+        changed_by = st.text_input(
+            "Changed by (name or initials)",
+            value=st.session_state.get("audit_actor", ""),
+            key="project_changed_by",
+            help="Required for the audit log. Initials are sufficient for this local prototype.",
+        )
         submitted = st.form_submit_button("Save project", type="primary")
     if submitted:
-        try:
-            upsert_shortlist_project(
-                SETTINGS,
-                {
-                    "source_project_id": code,
-                    "region": region,
-                    "display_name": display_name,
-                    "parent_group": parent_group,
-                    "project_set": project_set,
-                    "manual_launch_date": manual_launch_date,
-                    "manual_built_up_min_sqft": built_up_min,
-                    "manual_built_up_max_sqft": built_up_max,
-                    "manual_psf_min": psf_min,
-                    "manual_psf_max": psf_max,
-                    "priority": priority,
-                    "tracking_notes": notes,
-                    "active": "Yes" if active else "No",
-                    "date_added": default.get("date_added", ""),
-                    "origin": default.get("origin", "manual"),
-                },
-            )
-            st.session_state["app_notice"] = (
-                f"Saved TEDUH project {code}. "
-                + (
-                    f'The dashboard will show your name “{display_name}”.'
-                    if display_name.strip()
-                    else "TEDUH's registered project name will be used after refresh."
+        if not changed_by.strip():
+            st.error("Enter your name or initials so this change can be recorded in the audit log.")
+        else:
+            try:
+                upsert_shortlist_project(
+                    SETTINGS,
+                    {
+                        "source_project_id": code,
+                        "region": region,
+                        "display_name": display_name,
+                        "parent_group": parent_group,
+                        "project_set": project_set,
+                        "manual_launch_date": manual_launch_date,
+                        "manual_built_up_min_sqft": built_up_min,
+                        "manual_built_up_max_sqft": built_up_max,
+                        "manual_psf_min": psf_min,
+                        "manual_psf_max": psf_max,
+                        "priority": priority,
+                        "tracking_notes": notes,
+                        "active": "Yes" if active else "No",
+                        "date_added": default.get("date_added", ""),
+                        "origin": default.get("origin", "manual"),
+                    },
+                    changed_by=changed_by,
                 )
-                + " Manual fields appear immediately; refresh the shortlist only when you want current TEDUH metrics."
-            )
-            st.rerun()
-        except ValueError as exc:
-            st.error(str(exc))
+                st.session_state["audit_actor"] = changed_by.strip()
+                st.session_state["app_notice"] = (
+                    f"Saved TEDUH project {code}. "
+                    + (
+                        f'The dashboard will show your name “{display_name}”.'
+                        if display_name.strip()
+                        else "TEDUH's registered project name will be used after refresh."
+                    )
+                    + " Manual fields appear immediately; refresh the shortlist only when you want current TEDUH metrics."
+                )
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
 
 with discovery_tab:
     st.subheader("On-demand regional discovery")
@@ -882,26 +906,37 @@ with discovery_tab:
                     list(PROJECT_SETS),
                     format_func=lambda value: SET_LABELS[value],
                 )
+                discovered_by = st.text_input(
+                    "Added by (name or initials)",
+                    value=st.session_state.get("audit_actor", ""),
+                    key="discovery_changed_by",
+                    help="Required for the audit log. Initials are sufficient for this local prototype.",
+                )
                 add_discovered = st.form_submit_button("Add to shortlist")
             if add_discovered:
-                upsert_shortlist_project(
-                    SETTINGS,
-                    {
-                        "source_project_id": discovered_code,
-                        "region": discovery_region,
-                        "display_name": discovered_name or choices[discovered_code]["registry_name"],
-                        "parent_group": discovered_parent,
-                        "project_set": discovered_set,
-                        "priority": "medium",
-                        "tracking_notes": "",
-                        "active": "Yes",
-                        "origin": "teduh_discovery",
-                    },
-                )
-                st.session_state["app_notice"] = (
-                    f"Added TEDUH project {discovered_code} to the shortlist."
-                )
-                st.rerun()
+                if not discovered_by.strip():
+                    st.error("Enter your name or initials so this addition can be recorded in the audit log.")
+                else:
+                    upsert_shortlist_project(
+                        SETTINGS,
+                        {
+                            "source_project_id": discovered_code,
+                            "region": discovery_region,
+                            "display_name": discovered_name or choices[discovered_code]["registry_name"],
+                            "parent_group": discovered_parent,
+                            "project_set": discovered_set,
+                            "priority": "medium",
+                            "tracking_notes": "",
+                            "active": "Yes",
+                            "origin": "teduh_discovery",
+                        },
+                        changed_by=discovered_by,
+                    )
+                    st.session_state["audit_actor"] = discovered_by.strip()
+                    st.session_state["app_notice"] = (
+                        f"Added TEDUH project {discovered_code} to the shortlist."
+                    )
+                    st.rerun()
     else:
         st.info(f"Run Discovery when you want to review the current {discovery_region} project catalogue.")
 
@@ -939,5 +974,76 @@ with alerts_tab:
                 "source_project_id": "TEDUH code",
                 "display_name": "Project",
                 "message": "Explanation",
+            },
+        )
+
+with audit_tab:
+    st.subheader("Project audit log")
+    st.caption(
+        "Records project additions and field-by-field manual edits from this version onward. "
+        "TEDUH data refreshes do not create manual-change entries."
+    )
+    if not audit_rows:
+        st.info("No audited changes have been recorded yet. Earlier project history has not been reconstructed.")
+    else:
+        audit = pd.DataFrame(audit_rows)
+        audit = audit.sort_values("event_timestamp", ascending=False)
+        audit_search = st.text_input(
+            "Search project, TEDUH code or person",
+            key="audit_search",
+        )
+        audit_actions = st.multiselect(
+            "Action",
+            sorted(audit["action"].dropna().unique()),
+            key="audit_actions",
+        )
+        if audit_search:
+            needle = audit_search.casefold()
+            audit = audit[
+                audit[["project_name", "source_project_id", "changed_by"]]
+                .fillna("")
+                .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
+            ]
+        if audit_actions:
+            audit = audit[audit["action"].isin(audit_actions)]
+        audit["event_timestamp"] = audit["event_timestamp"].map(display_timestamp)
+        audit["project_name"] = audit.apply(
+            lambda row: (
+                row["project_name"]
+                if row["project_name"] and row["project_name"] != row["source_project_id"]
+                else (
+                    shortlist_by_project.get(row["source_project_id"], {}).get("display_name")
+                    or registry_name_by_code.get(row["source_project_id"])
+                    or row["source_project_id"]
+                )
+            ),
+            axis=1,
+        )
+        for field in ("field", "previous_value", "new_value"):
+            audit[field] = audit[field].replace("", "—")
+        st.dataframe(
+            audit[
+                [
+                    "event_timestamp",
+                    "changed_by",
+                    "action",
+                    "project_name",
+                    "source_project_id",
+                    "field",
+                    "previous_value",
+                    "new_value",
+                ]
+            ],
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "event_timestamp": "When",
+                "changed_by": "Changed by",
+                "action": "Action",
+                "project_name": "Project",
+                "source_project_id": "TEDUH code",
+                "field": "Field",
+                "previous_value": "Previous value",
+                "new_value": "New value",
             },
         )

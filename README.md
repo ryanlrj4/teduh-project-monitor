@@ -15,6 +15,7 @@ The dashboard opens locally in your browser. Use these tabs:
 - **Add or edit** — add a TEDUH code or change the local display name, parent group, project set, priority, notes, or active flag.
 - **Discovery** — create or reuse a searchable regional TEDUH catalogue. A successful live discovery is limited to once per region per local calendar day.
 - **Alerts** — review Sakit, Lewat, cancellation, missing construction, and changes between dated observations.
+- **Audit log** — review project additions and each manually edited field, including who made the change and its previous and new values.
 
 The dashboard retains a manual refresh button. `run_weekly_refresh.bat` is the safe Monday-oriented scheduler command: it refreshes only when the current Monday-based week has no successful observation. Registering the command with Windows Task Scheduler is a deployment step; the computer must be on and connected when it runs.
 
@@ -77,6 +78,7 @@ The older full-universe proof command remains available as `teduh_phase2.cli run
 - Current Parquet: `data/processed/shortlist_current.parquet`
 - Dated history: `data/history/shortlist_history.csv` and `.parquet`
 - Alerts: `data/processed/shortlist_alerts.csv`
+- Project-change audit log: `data/audit/project_changes.csv` (created on the first new addition or edit)
 - Exactly five validation rows: `data/processed/shortlist_validation_sample.csv`
 - Beginner operating guide: `docs/PHASE3_GUIDE.md`
 

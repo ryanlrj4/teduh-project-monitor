@@ -13,7 +13,7 @@ from teduh_phase2.discovery import (
     discovery_manifest_path,
     run_discovery,
 )
-from teduh_phase2.shortlist import load_shortlist, upsert_shortlist_project
+from teduh_phase2.shortlist import load_audit_log, load_shortlist, upsert_shortlist_project
 
 
 def test_shortlist_preserves_manual_name_and_parent_mapping(tmp_path) -> None:
@@ -115,6 +115,73 @@ def test_shortlist_requires_both_ends_of_a_manual_range(tmp_path) -> None:
                 "manual_psf_min": "800",
             },
         )
+
+
+def test_project_addition_is_recorded_in_audit_log(tmp_path) -> None:
+    settings = Settings(root=tmp_path)
+    upsert_shortlist_project(
+        settings,
+        {
+            "source_project_id": "30744-1",
+            "region": "Penang",
+            "display_name": "The Crown",
+            "parent_group": "Chin Hin",
+            "project_set": "general",
+        },
+        changed_by="RLR",
+    )
+    audit = load_audit_log(settings)
+    assert len(audit) == 1
+    assert audit[0]["action"] == "Project added"
+    assert audit[0]["changed_by"] == "RLR"
+    assert audit[0]["source_project_id"] == "30744-1"
+    assert audit[0]["project_name"] == "The Crown"
+    assert audit[0]["event_timestamp"]
+
+
+def test_project_edits_are_recorded_field_by_field(tmp_path) -> None:
+    settings = Settings(root=tmp_path)
+    original = {
+        "source_project_id": "30744-1",
+        "region": "Penang",
+        "display_name": "The Crown",
+        "parent_group": "Chin Hin",
+        "project_set": "general",
+        "priority": "medium",
+        "active": "Yes",
+    }
+    upsert_shortlist_project(settings, original, changed_by="RLR")
+    upsert_shortlist_project(
+        settings,
+        {
+            **original,
+            "parent_group": "Chin Hin Group",
+            "project_set": "reporting_set",
+        },
+        changed_by="ABC",
+    )
+    audit = load_audit_log(settings)
+    edits = [row for row in audit if row["action"] == "Project edited"]
+    assert len(edits) == 2
+    assert {row["field"] for row in edits} == {"Parent group", "Project set"}
+    parent_change = next(row for row in edits if row["field"] == "Parent group")
+    assert parent_change["previous_value"] == "Chin Hin"
+    assert parent_change["new_value"] == "Chin Hin Group"
+    assert parent_change["changed_by"] == "ABC"
+
+
+def test_saving_without_changes_does_not_add_audit_noise(tmp_path) -> None:
+    settings = Settings(root=tmp_path)
+    row = {
+        "source_project_id": "30744-1",
+        "region": "Penang",
+        "display_name": "The Crown",
+        "project_set": "general",
+    }
+    upsert_shortlist_project(settings, row, changed_by="RLR")
+    upsert_shortlist_project(settings, row, changed_by="RLR")
+    audit = load_audit_log(settings)
+    assert [event["action"] for event in audit] == ["Project added"]
 
 
 def test_same_day_discovery_reuses_catalog_without_live_request(tmp_path) -> None:
