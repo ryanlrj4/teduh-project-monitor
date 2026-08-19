@@ -25,7 +25,7 @@ def test_shortlist_preserves_manual_name_and_parent_mapping(tmp_path) -> None:
             "display_name": "Skyline Embassy Ampang",
             "parent_group": "Law Developments",
             "project_set": "comparator_set",
-            "priority": "high",
+            "priority": "high",  # Legacy input is accepted but intentionally discarded.
             "tracking_notes": "Public monitoring note",
             "active": "Yes",
             "origin": "manual",
@@ -36,6 +36,7 @@ def test_shortlist_preserves_manual_name_and_parent_mapping(tmp_path) -> None:
     assert rows[0]["parent_group"] == "Law Developments"
     assert rows[0]["project_set"] == "comparator_set"
     assert rows[0]["region"] == "Kuala Lumpur"
+    assert "priority" not in rows[0]
 
 
 def test_shortlist_allows_teduh_name_fallback(tmp_path) -> None:
@@ -47,7 +48,6 @@ def test_shortlist_allows_teduh_name_fallback(tmp_path) -> None:
             "display_name": "",
             "parent_group": "",
             "project_set": "general",
-            "priority": "medium",
             "active": "Yes",
         },
     )
@@ -66,7 +66,6 @@ def test_shortlist_preserves_penang_region_and_reporting_set(tmp_path) -> None:
             "display_name": "The Anton",
             "parent_group": "Tamarins Land",
             "project_set": "reporting_set",
-            "priority": "high",
             "active": "Yes",
         },
     )
@@ -147,7 +146,6 @@ def test_project_edits_are_recorded_field_by_field(tmp_path) -> None:
         "display_name": "The Crown",
         "parent_group": "Chin Hin",
         "project_set": "general",
-        "priority": "medium",
         "active": "Yes",
     }
     upsert_shortlist_project(settings, original, changed_by="RLR")

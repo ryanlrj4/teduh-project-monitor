@@ -33,6 +33,95 @@ def flatten_units(payload: dict[str, Any] | None) -> list[dict[str, Any]]:
     return flattened
 
 
+def component_sales_summary(
+    payload: dict[str, Any] | None,
+    reported_total_units: int | None,
+) -> tuple[list[dict[str, Any]], str, str | None]:
+    """Summarise sales independently for each TEDUH unit group.
+
+    TEDUH consistently supplies a component identifier but does not always
+    supply a human-readable block name. Fallback labels therefore remain
+    deliberately neutral rather than inferring a tower from unit numbers.
+    """
+    groups = (payload or {}).get("unitGroups") or []
+    if not groups:
+        return [], "unavailable", "No TEDUH unit groups"
+
+    summaries: list[dict[str, Any]] = []
+    all_units: list[dict[str, Any]] = []
+    for index, group in enumerate(groups, start=1):
+        units = [dict(unit) for unit in group.get("units") or []]
+        development_id = group.get("pembangunan_id")
+        for unit in units:
+            unit["pembangunan_id"] = development_id
+        all_units.extend(units)
+        classes = [
+            normalize_sales_status(unit.get("statusJualan"), unit.get("status"))
+            for unit in units
+        ]
+        counts = Counter(classes)
+        sold = counts["sold"]
+        unsold = counts["unsold"]
+        booked = counts["booked"] + counts["reserved"]
+        unknown = counts["unknown"]
+        comparable = sold + unsold + booked
+        duplicate_count = duplicate_unit_count(units)
+        explicit_label = clean_text(
+            group.get("nama")
+            or group.get("nama_blok")
+            or group.get("blok")
+            or group.get("block")
+            or group.get("tower")
+            or group.get("fasa")
+        )
+        confidence = (
+            "high"
+            if units and unknown == 0 and duplicate_count == 0 and comparable == len(units)
+            else "low"
+            if comparable
+            else "unavailable"
+        )
+        summaries.append(
+            {
+                "component_number": index,
+                "component_label": explicit_label or f"Component {index}",
+                "source_component_id": clean_text(development_id),
+                "property_type": clean_text(group.get("jenis")),
+                "total_units": len(units),
+                "sold_units": sold,
+                "unsold_units": unsold,
+                "booked_or_reserved_units": booked,
+                "unknown_sales_status_units": unknown,
+                "comparable_total_units": comparable,
+                "sales_percentage": safe_percentage(sold, comparable),
+                "duplicate_unit_identifiers": duplicate_count,
+                "confidence": confidence,
+            }
+        )
+
+    observed_total = sum(row["total_units"] for row in summaries)
+    duplicate_count = duplicate_unit_count(all_units)
+    unknown_count = sum(row["unknown_sales_status_units"] for row in summaries)
+    notes: list[str] = []
+    if reported_total_units is not None and observed_total != reported_total_units:
+        notes.append(
+            f"Component units ({observed_total}) do not reconcile to reported units ({reported_total_units})"
+        )
+    if duplicate_count:
+        notes.append(f"{duplicate_count} duplicate unit identifier(s) detected")
+    if unknown_count:
+        notes.append(f"{unknown_count} unit(s) have an unknown sales status")
+    row_confidences = {str(row.get("confidence") or "unavailable") for row in summaries}
+    if not notes and row_confidences == {"high"}:
+        confidence = "high"
+    elif any(row.get("comparable_total_units") for row in summaries):
+        confidence = "low"
+    else:
+        confidence = "unavailable"
+        notes.append("No comparable unit sales statuses")
+    return summaries, confidence, "; ".join(notes) or None
+
+
 def duplicate_unit_count(units: list[dict[str, Any]]) -> int:
     keys = [
         (str(unit.get("pembangunan_id") or ""), str(unit.get("no") or "").strip())
@@ -40,6 +129,15 @@ def duplicate_unit_count(units: list[dict[str, Any]]) -> int:
     ]
     counts = Counter(key for key in keys if key[1])
     return sum(count - 1 for count in counts.values() if count > 1)
+
+
+def _float_or_none(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def weighted_construction(
@@ -174,6 +272,9 @@ def calculate_project_metrics(
     duplicate_units = duplicate_unit_count(units)
 
     reported_total = to_int(summary.get("unit"))
+    component_sales, component_sales_confidence, component_sales_note = component_sales_summary(
+        units_payload, reported_total
+    )
     unit_count = len(units)
     priced_units = [unit for unit in units if parse_price(unit.get("hargaJualan")) is not None]
     classifications = [
@@ -300,9 +401,17 @@ def calculate_project_metrics(
         "project_name": clean_text(project.get("nama") or search_project.get("nama")),
         "developer_id": clean_text(developer.get("kod_pemaju") or search_project.get("kod_pemaju")),
         "developer_name": clean_text(developer.get("nama")),
+        "developer_status": clean_text(developer.get("statusPemaju")),
+        "developer_project_count": to_int(developer.get("bilanganProjek")),
+        "developer_license_number": clean_text(latest_licence.get("no_lesenpermit")),
+        "developer_license_start_date": iso_or_none(latest_licence.get("tarikh_mula")),
+        "developer_license_end_date": iso_or_none(latest_licence.get("tarikh_luput")),
         "state": normalize_state(project_state) or "Wp Kuala Lumpur",
         "district": clean_text(district_value),
         "city": clean_text(city_value),
+        "project_location": clean_text(detail.get("lokasi")),
+        "latitude": _float_or_none(detail.get("lat")),
+        "longitude": _float_or_none(detail.get("lng")),
         "source_state_value": clean_text(project_state),
         "source_district_value": clean_text(district_value),
         "source_city_value": clean_text(city_value),
@@ -317,7 +426,13 @@ def calculate_project_metrics(
         "hims_eligibility_cutoff_date": HIMS_UNIT_DATA_START_ISO,
         "project_status": clean_text(status.get("keseluruhan"))
         or clean_text((search_project.get("status_project") or {}).get("keterangan")),
+        "development_type": clean_text(status.get("maklumatPembangunan")),
+        "agreement_type": clean_text(pjb.get("jenis")),
+        "original_construction_period": clean_text(pjb.get("tempohAsal")),
         "expected_vp_date": iso_or_none(pjb.get("serahKosongIkutPjb")),
+        "vp_period_amended": clean_text(pjb.get("pindaanTempohSerahKosong")),
+        "approved_extension_period": clean_text(pjb.get("tempohTambahanDiluluskan")),
+        "revised_construction_period": clean_text(pjb.get("tempohPembinaanBaharu")),
         "revised_vp_date": iso_or_none(pjb.get("serahKosongBaharuIkutPjbPertama")),
         "ccc_obtained": ccc_obtained(construction_rows, status.get("keseluruhan")),
         "ccc_date": ccc_date,
@@ -349,6 +464,9 @@ def calculate_project_metrics(
         "sales_value_confidence": sales_value_confidence,
         "construction_confidence": construction_confidence,
         "construction_note": construction_note,
+        "component_sales_count": len(component_sales),
+        "component_sales_confidence": component_sales_confidence,
+        "component_sales_note": component_sales_note,
         "source_url": SEARCH_PAGE_URL,
         "source_detail_api_url": f"https://teduh.kpkt.gov.my/api/projek-swasta/{project_code}",
         "source_units_api_url": f"https://teduh.kpkt.gov.my/api/unit-projek-swasta/{project_code}",
@@ -357,5 +475,7 @@ def calculate_project_metrics(
         "retrieved_at": retrieved_at,
         "transformation_version": TRANSFORMATION_VERSION,
         "construction_rows_json": json.dumps(construction_rows, ensure_ascii=False, separators=(",", ":")),
+        "component_sales_json": json.dumps(component_sales, ensure_ascii=False, separators=(",", ":")),
+        "permit_history_json": json.dumps(detail.get("lesen_records") or [], ensure_ascii=False, separators=(",", ":")),
     }
     return result

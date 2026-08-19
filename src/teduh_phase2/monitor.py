@@ -14,13 +14,19 @@ from .config import REGION_CONFIGS, Settings
 from .export import FIELD_SPECS, FIELDS
 from .metrics import calculate_project_metrics
 from .normalize import is_hims_eligible, normalize_state
+from .refresh_status import (
+    complete_refresh_failure,
+    complete_refresh_success,
+    start_refresh,
+    update_refresh,
+)
 from .sources import SourceAnomaly, TeduhClient
 from .validate import require_no_errors, validate_records
 from .shortlist import load_shortlist
 
 
 Progress = Callable[[str], None]
-ProjectProgress = Callable[[int, int], None]
+ProjectProgress = Callable[[int, int, str, bool], None]
 MANUAL_FIELD_SPECS: list[tuple[str, str]] = [
     ("region", "VARCHAR"),
     ("display_name", "VARCHAR"),
@@ -31,7 +37,6 @@ MANUAL_FIELD_SPECS: list[tuple[str, str]] = [
     ("manual_built_up_max_sqft", "DECIMAL(16,2)"),
     ("manual_psf_min", "DECIMAL(16,2)"),
     ("manual_psf_max", "DECIMAL(16,2)"),
-    ("priority", "VARCHAR"),
     ("tracking_notes", "VARCHAR"),
     ("shortlist_active", "VARCHAR"),
     ("shortlist_origin", "VARCHAR"),
@@ -250,7 +255,7 @@ def _validation_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return selected
 
 
-def snapshot_shortlist(
+def _snapshot_shortlist(
     settings: Settings,
     *,
     progress: Progress = print,
@@ -263,10 +268,13 @@ def snapshot_shortlist(
         raise ValueError("The active shortlist is empty")
     records: list[dict[str, Any]] = []
     failures: list[str] = []
+    cached_project_count = 0
+    live_project_count = 0
     progress(f"Refreshing {len(shortlist)} active TEDUH shortlist projects.")
     with TeduhClient(settings, snapshot_date=today, force=False) as client:
         for index, tracked in enumerate(shortlist, start=1):
             code = tracked["source_project_id"]
+            project_succeeded = False
             try:
                 detail_result = client.project_detail(code)
                 detail = detail_result.payload
@@ -314,7 +322,6 @@ def snapshot_shortlist(
                         "manual_built_up_max_sqft": tracked["manual_built_up_max_sqft"],
                         "manual_psf_min": tracked["manual_psf_min"],
                         "manual_psf_max": tracked["manual_psf_max"],
-                        "priority": tracked["priority"],
                         "tracking_notes": tracked["tracking_notes"],
                         "shortlist_active": tracked["active"],
                         "shortlist_origin": tracked["origin"],
@@ -324,10 +331,15 @@ def snapshot_shortlist(
                     }
                 )
                 records.append(record)
+                project_succeeded = True
+                if detail_result.from_cache and unit_result.from_cache:
+                    cached_project_count += 1
+                else:
+                    live_project_count += 1
             except (SourceAnomaly, ValueError) as exc:
                 failures.append(f"{code}: {exc}")
             if project_progress is not None:
-                project_progress(index, len(shortlist))
+                project_progress(index, len(shortlist), code, project_succeeded)
             if index == 1 or index % 5 == 0 or index == len(shortlist):
                 progress(f"Reviewed {index}/{len(shortlist)} shortlist projects.")
     if failures:
@@ -352,7 +364,10 @@ def snapshot_shortlist(
     progress("Shortlist snapshot, history, alerts, and exactly five validation rows were verified.")
     return {
         "snapshot_date": today,
+        "source_dataset_as_of": source_dataset_as_of,
         "project_count": len(records),
+        "cached_project_count": cached_project_count,
+        "live_project_count": live_project_count,
         "alert_count": len(alerts),
         "validation": validation,
         "paths": {
@@ -364,3 +379,45 @@ def snapshot_shortlist(
             "validation_csv": validation_path(settings),
         },
     }
+
+
+def snapshot_shortlist(
+    settings: Settings,
+    *,
+    progress: Progress = print,
+    project_progress: ProjectProgress | None = None,
+    trigger: str = "manual",
+) -> dict[str, Any]:
+    """Run and persist the status of a validated shortlist refresh."""
+    total_projects = len(load_shortlist(settings, active_only=True))
+    start_refresh(settings, trigger=trigger, total_projects=total_projects)
+    successful_projects = 0
+    failed_projects = 0
+
+    def tracked_progress(completed: int, total: int, code: str, succeeded: bool) -> None:
+        nonlocal successful_projects, failed_projects
+        if succeeded:
+            successful_projects += 1
+        else:
+            failed_projects += 1
+        update_refresh(
+            settings,
+            completed_projects=completed,
+            successful_projects=successful_projects,
+            failed_projects=failed_projects,
+            current_project_code=code,
+        )
+        if project_progress is not None:
+            project_progress(completed, total, code, succeeded)
+
+    try:
+        result = _snapshot_shortlist(
+            settings,
+            progress=progress,
+            project_progress=tracked_progress,
+        )
+    except Exception as exc:
+        complete_refresh_failure(settings, error=exc)
+        raise
+    complete_refresh_success(settings, result=result)
+    return result

@@ -53,7 +53,7 @@ def refresh_if_due(
             "latest_observation": latest.isoformat(),
         }
     progress(f"Weekly TEDUH refresh is due for the week of {due_from.isoformat()}.")
-    result = snapshot_shortlist(settings, progress=progress)
+    result = snapshot_shortlist(settings, progress=progress, trigger="scheduled")
     return {
         "refreshed": True,
         "due_from": due_from.isoformat(),

@@ -40,15 +40,18 @@ state.
 ## Current functional state
 
 - Supported regions: Kuala Lumpur and Penang.
-- Active shortlist: 49 projects.
+- Active shortlist: 50 projects.
 - Sets: Reporting Set, Comparator Set, and General.
-- Current details include TEDUH First SPA and SPA price range; optional local
-  launch date, built-up, and PSF fields; sales and construction; values; CCC/CFO
-  status and component-level CCC/VP dates; retrieval timing; and weekly history.
+- Current details distinguish TEDUH, local, calculated and application-generated
+  fields. They include overall and component sales, contractual VP changes,
+  component construction, permit/developer licensing, values, CCC/CFO and VP,
+  retrieval timing, and weekly history in a compact collapsible hierarchy.
+- The Shortlist tab persists the latest refresh outcome and recent run history.
 - Pinnacle Bukit Gambier has a locally entered built-up range of
   `1,080–1,726 sqft`.
-- The latest Windows verification passed 31 tests and validated 49 distinct
-  shortlist observations plus exactly five Phase 3 validation rows.
+- The latest macOS verification passed 41 tests. The checked-in data contains
+  50 current projects, 100 unique dated observations, and exactly five Phase 3
+  validation rows.
 
 ## Files that must remain preserved
 

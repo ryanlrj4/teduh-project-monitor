@@ -3,12 +3,58 @@ from decimal import Decimal
 from teduh_phase2.metrics import (
     calculate_project_metrics,
     ccc_obtained,
+    component_sales_summary,
     component_completion_dates,
     duplicate_unit_count,
     indicative_gdv_range,
     teduh_spa_price_range,
     weighted_construction,
 )
+
+
+def test_component_sales_are_calculated_per_teduh_unit_group() -> None:
+    payload = {
+        "unitGroups": [
+            {
+                "pembangunan_id": 101,
+                "jenis": "Apartment",
+                "units": [
+                    {"no": "A-1", "statusJualan": "Telah Dijual", "status": "sold"},
+                    {"no": "A-2", "statusJualan": "Belum Dijual", "status": "avail"},
+                ],
+            },
+            {
+                "pembangunan_id": 102,
+                "jenis": "Soho",
+                "units": [
+                    {"no": "B-1", "statusJualan": "Telah Dijual", "status": "sold"},
+                    {"no": "B-2", "statusJualan": "Telah Dijual", "status": "sold"},
+                ],
+            },
+        ]
+    }
+    rows, confidence, note = component_sales_summary(payload, 4)
+    assert confidence == "high"
+    assert note is None
+    assert [row["component_label"] for row in rows] == ["Component 1", "Component 2"]
+    assert rows[0]["source_component_id"] == "101"
+    assert rows[0]["sales_percentage"] == 50.0
+    assert rows[1]["sales_percentage"] == 100.0
+
+
+def test_component_sales_report_reconciliation_problem() -> None:
+    payload = {
+        "unitGroups": [
+            {
+                "pembangunan_id": 101,
+                "jenis": "Apartment",
+                "units": [{"no": "A-1", "statusJualan": "Telah Dijual", "status": "sold"}],
+            }
+        ]
+    }
+    _, confidence, note = component_sales_summary(payload, 2)
+    assert confidence == "low"
+    assert "do not reconcile" in str(note)
 
 
 def project_inputs(units: list[dict], *, reported: int = 2, rows: list[dict] | None = None):
@@ -95,6 +141,60 @@ def test_sold_count_coverage_and_values() -> None:
     assert result["gdv_confidence"] == "high"
     assert result["sales_value_confidence"] == "high"
     assert result["construction_percentage"] == 50.0
+
+
+def test_project_metadata_preserves_teduh_contract_and_licence_fields() -> None:
+    units = [
+        {
+            "no": "A-1",
+            "status": "sold",
+            "statusJualan": "Telah Dijual",
+            "hargaJualan": "100000",
+            "hargaSPJB": "90000",
+        }
+    ]
+    search, detail, payload = project_inputs(units, reported=1)
+    detail.update({"lokasi": "Kuala Lumpur", "lat": "3.14", "lng": "101.70"})
+    detail["pemaju"].update(
+        {
+            "statusPemaju": "Aktif",
+            "bilanganProjek": 2,
+            "latest_lesen": {
+                "no_lesenpermit": "999/TEST",
+                "tarikh_mula": "2024-01-01",
+                "tarikh_luput": "2029-01-01",
+            },
+        }
+    )
+    detail["pjb"] = {
+        "jenis": "Jadual H",
+        "tempohAsal": "36 Bulan",
+        "tarikhPjbPertama": "2026-02-01",
+        "serahKosongIkutPjb": "2029-02-01",
+        "pindaanTempohSerahKosong": "Ya",
+        "tempohTambahanDiluluskan": "12 Bulan",
+        "tempohPembinaanBaharu": "48 Bulan",
+        "serahKosongBaharuIkutPjbPertama": "2030-02-01",
+    }
+    detail["status"]["maklumatPembangunan"] = "Berfasa"
+    detail["lesen_records"] = [{"no_lesenpermit": "999/OLD"}]
+    result = calculate_project_metrics(
+        search_project=search,
+        detail=detail,
+        units_payload=payload,
+        city_lookup={},
+        snapshot_date="2026-08-19",
+        source_dataset_as_of="2026-08-18",
+        retrieved_at="2026-08-19T12:00:00+08:00",
+    )
+    assert result["developer_status"] == "Aktif"
+    assert result["developer_license_number"] == "999/TEST"
+    assert result["development_type"] == "Berfasa"
+    assert result["agreement_type"] == "Jadual H"
+    assert result["approved_extension_period"] == "12 Bulan"
+    assert result["latitude"] == 3.14
+    assert result["component_sales_count"] == 1
+    assert "999/OLD" in result["permit_history_json"]
 
 
 def test_estimated_sales_uses_listed_price_when_spa_missing() -> None:

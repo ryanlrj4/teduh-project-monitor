@@ -23,7 +23,6 @@ SHORTLIST_FIELDS = [
     "manual_built_up_max_sqft",
     "manual_psf_min",
     "manual_psf_max",
-    "priority",
     "tracking_notes",
     "active",
     "date_added",
@@ -50,12 +49,10 @@ AUDITED_FIELD_LABELS = {
     "manual_built_up_max_sqft": "Built-up maximum",
     "manual_psf_min": "PSF minimum",
     "manual_psf_max": "PSF maximum",
-    "priority": "Priority",
     "tracking_notes": "Monitoring notes",
     "active": "Active refresh",
 }
 PROJECT_SETS = ("reporting_set", "comparator_set", "general")
-PRIORITIES = ("high", "medium", "low")
 PROJECT_CODE_PATTERN = re.compile(r"^\d+-\d+$")
 
 
@@ -101,9 +98,6 @@ def normalize_shortlist_row(row: dict[str, Any]) -> dict[str, str]:
     project_set = str(row.get("project_set") or "general").strip().casefold()
     if project_set not in PROJECT_SETS:
         raise ValueError(f"Invalid project set for {project_code}: {project_set}")
-    priority = str(row.get("priority") or "medium").strip().casefold()
-    if priority not in PRIORITIES:
-        raise ValueError(f"Invalid priority for {project_code}: {priority}")
     region = clean_text(row.get("region")) or DEFAULT_REGION
     if region not in REGION_CONFIGS:
         raise ValueError(f"Invalid region for {project_code}: {region}")
@@ -135,7 +129,6 @@ def normalize_shortlist_row(row: dict[str, Any]) -> dict[str, str]:
         "manual_built_up_max_sqft": built_up_max,
         "manual_psf_min": psf_min,
         "manual_psf_max": psf_max,
-        "priority": priority,
         "tracking_notes": clean_text(row.get("tracking_notes")) or "",
         "active": "Yes" if _is_active(row.get("active", "Yes")) else "No",
         "date_added": added,

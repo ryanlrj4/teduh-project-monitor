@@ -32,7 +32,7 @@ TARGET_STATUSES = {
 }
 HIMS_UNIT_DATA_START_DATE = date(2022, 1, 31)
 HIMS_UNIT_DATA_START_ISO = HIMS_UNIT_DATA_START_DATE.isoformat()
-TRANSFORMATION_VERSION = "1.3.0"
+TRANSFORMATION_VERSION = "1.4.0"
 USER_AGENT = "TeduhProjectMonitor/0.2 (local research; sequential public requests)"
 
 

@@ -21,9 +21,10 @@ from teduh_phase2.monitor import (
     snapshot_shortlist,
 )
 from teduh_phase2.metrics import component_completion_dates
+from teduh_phase2.presentation import latest_project_changes, present_alert
+from teduh_phase2.refresh_status import load_refresh_history, load_refresh_status
 from teduh_phase2.shortlist import (
     PROJECT_SETS,
-    PRIORITIES,
     load_audit_log,
     load_shortlist,
     upsert_shortlist_project,
@@ -62,6 +63,9 @@ st.markdown(
         font-family: "Open Sans", OpenSans, Helvetica, Arial, sans-serif;
         color: var(--ocbc-charcoal);
     }
+    [data-testid="stIconMaterial"], .material-symbols-rounded {
+        font-family: "Material Symbols Rounded" !important;
+    }
     [data-testid="stAppViewContainer"], [data-testid="stMain"] {
         background: var(--ocbc-white);
     }
@@ -88,27 +92,32 @@ st.markdown(
     }
     [data-testid="stMetricLabel"] {color: var(--ocbc-muted) !important;font-weight:600;}
     [data-testid="stMetricValue"] {color: var(--ocbc-charcoal) !important;font-weight:600;}
-    .st-key-project_detail_panel [data-testid="stMetric"] {
+    .st-key-project_detail_panel [data-testid="stMetric"],
+    .st-key-all_projects_detail_panel [data-testid="stMetric"] {
         border-top-width: 2px;
         padding: 10px 12px;
         min-height: 0;
     }
-    .st-key-project_detail_panel [data-testid="stMetricLabel"] p {
+    .st-key-project_detail_panel [data-testid="stMetricLabel"] p,
+    .st-key-all_projects_detail_panel [data-testid="stMetricLabel"] p {
         font-size: .78rem !important;
         line-height: 1.2 !important;
     }
-    .st-key-project_detail_panel [data-testid="stMetricValue"] {
+    .st-key-project_detail_panel [data-testid="stMetricValue"],
+    .st-key-all_projects_detail_panel [data-testid="stMetricValue"] {
         font-size: 1.15rem !important;
         line-height: 1.3 !important;
     }
-    .st-key-manual_project_details {
+    .st-key-manual_project_details,
+    .st-key-all_projects_manual_project_details {
         background: var(--ocbc-surface);
         border-left: 4px solid var(--ocbc-muted);
         border-radius: 5px;
         padding: .75rem 1rem .4rem;
         margin: .65rem 0 1rem;
     }
-    .st-key-manual_project_details [data-testid="stMetric"] {
+    .st-key-manual_project_details [data-testid="stMetric"],
+    .st-key-all_projects_manual_project_details [data-testid="stMetric"] {
         background: var(--ocbc-white);
         border-top-color: var(--ocbc-muted);
     }
@@ -225,8 +234,17 @@ def read_csv(path: Path) -> list[dict[str, str]]:
 
 def money(value: object) -> str:
     if value in (None, "") or pd.isna(value):
-        return "—"
+        return "N/A"
     return f"RM {float(value):,.0f}"
+
+
+def source_money(value: object) -> str:
+    if value in (None, "", "-"):
+        return "N/A"
+    try:
+        return f"RM {float(str(value).replace(',', '').replace('RM', '').strip()):,.0f}"
+    except ValueError:
+        return "N/A"
 
 
 def numeric_range(
@@ -238,7 +256,7 @@ def numeric_range(
     decimals: int = 0,
 ) -> str:
     if minimum in (None, "") or maximum in (None, "") or pd.isna(minimum) or pd.isna(maximum):
-        return "—"
+        return "N/A"
     low = float(minimum)
     high = float(maximum)
     formatter = f",.{decimals}f"
@@ -249,26 +267,26 @@ def numeric_range(
 
 def whole_number(value: object) -> str:
     if value in (None, "") or pd.isna(value):
-        return "—"
+        return "N/A"
     return f"{int(float(value)):,}"
 
 
 def pct(value: float | int | None) -> str:
     if value is None or pd.isna(value):
-        return "—"
+        return "N/A"
     return f"{value:.1f}%"
 
 
 def display_date(value: object) -> str:
     if value in (None, "") or pd.isna(value):
-        return "—"
+        return "N/A"
     parsed = pd.to_datetime(value, errors="coerce")
-    return "—" if pd.isna(parsed) else parsed.strftime("%d %b %Y")
+    return "N/A" if pd.isna(parsed) else parsed.strftime("%d %b %Y")
 
 
 def display_timestamp(value: object) -> str:
     if value in (None, "") or pd.isna(value):
-        return "—"
+        return "N/A"
     try:
         parsed = datetime.fromisoformat(str(value))
     except ValueError:
@@ -277,8 +295,134 @@ def display_timestamp(value: object) -> str:
 
 
 def region_label(value: object) -> str:
-    text = str(value or "—")
+    text = str(value or "N/A")
     return REGION_LABELS.get(text, text)
+
+
+def signed_number(
+    value: object,
+    *,
+    decimals: int = 0,
+    suffix: str = "",
+    zero_label: str | None = None,
+) -> str:
+    if value is None or pd.isna(value):
+        return "N/A"
+    number = float(value)
+    if zero_label is not None and abs(number) < 1e-9:
+        return zero_label
+    return f"{number:+,.{decimals}f}{suffix}"
+
+
+def status_change(previous: object, current_value: object) -> str:
+    previous_text = str(previous or "N/A")
+    current_text = str(current_value or "N/A")
+    return "No change" if previous_text == current_text else f"{previous_text} → {current_text}"
+
+
+def display_text(value: object) -> str:
+    if value in (None, "") or pd.isna(value):
+        return "N/A"
+    return str(value)
+
+
+def json_rows(value: object) -> list[dict[str, object]]:
+    if value in (None, "") or pd.isna(value):
+        return []
+    try:
+        payload = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    return [row for row in payload if isinstance(row, dict)] if isinstance(payload, list) else []
+
+
+def display_duration(value: object) -> str:
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return "N/A"
+    if seconds < 60:
+        return f"{seconds:.1f} sec"
+    minutes, remaining = divmod(int(round(seconds)), 60)
+    return f"{minutes} min {remaining:02d} sec"
+
+
+def render_refresh_status_panel() -> None:
+    status = load_refresh_status(SETTINGS)
+    history_rows = load_refresh_history(SETTINGS)
+    st.markdown("#### Refresh status")
+    if not status:
+        st.info("No refresh run has been recorded by this version yet.")
+        return
+
+    state = str(status.get("status") or "unknown")
+    completed = int(status.get("completed_projects") or 0)
+    total = int(status.get("total_projects") or 0)
+    if state == "running":
+        st.info(f"Refresh in progress: reviewed {completed}/{total} projects.")
+        st.progress(completed / total if total else 0.0, text="TEDUH refresh in progress")
+    elif state == "success":
+        st.success("Last refresh completed validation and was published.")
+    elif state == "failed":
+        st.error("Last refresh failed validation. The previous valid snapshot remains in use.")
+    else:
+        st.warning(f"Refresh status: {state}")
+
+    summary = st.columns(4)
+    summary[0].metric(
+        "Last run",
+        state.title(),
+        help="Application-generated status for the most recent refresh attempt.",
+    )
+    summary[1].metric(
+        "Projects reviewed",
+        f"{completed:,} / {total:,}",
+        help="Application-generated count of active shortlist projects reviewed in the run.",
+    )
+    summary[2].metric(
+        "Duration",
+        display_duration(status.get("duration_seconds")),
+        help="Application-generated elapsed time for the refresh attempt.",
+    )
+    summary[3].metric(
+        "TEDUH data through",
+        display_date(
+            status.get("source_dataset_as_of")
+            or status.get("last_successful_source_dataset_as_of")
+        ),
+        help="TEDUH frontend data-through label; not a per-project API update timestamp.",
+    )
+    st.caption(
+        f"Started {display_timestamp(status.get('started_at'))} · "
+        f"Completed {display_timestamp(status.get('completed_at'))} · "
+        f"Trigger: {display_text(status.get('trigger')).title()} · "
+        f"Publication: {display_text(status.get('publication_status'))}"
+    )
+    if status.get("cached_projects") is not None:
+        st.caption(
+            f"Source requests: {int(status.get('cached_projects') or 0):,} projects reused the same-day cache; "
+            f"{int(status.get('live_projects') or 0):,} required at least one live TEDUH request."
+        )
+    if status.get("error"):
+        with st.expander("Failure details"):
+            st.code(str(status["error"]), language=None)
+    if history_rows:
+        with st.expander("Recent refresh runs"):
+            recent = pd.DataFrame(history_rows)
+            recent["Run"] = recent["completed_at"].map(display_timestamp)
+            recent["Status"] = recent["status"].astype(str).str.title()
+            recent["Trigger"] = recent["trigger"].astype(str).str.title()
+            recent["Projects"] = recent.apply(
+                lambda row: f"{int(row.get('completed_projects') or 0):,} / {int(row.get('total_projects') or 0):,}",
+                axis=1,
+            )
+            recent["Duration"] = recent["duration_seconds"].map(display_duration)
+            st.dataframe(
+                recent[["Run", "Status", "Trigger", "Projects", "Duration", "publication_status"]],
+                hide_index=True,
+                width="stretch",
+                column_config={"publication_status": "Publication"},
+            )
 
 
 def dataframe(rows: list[dict[str, str]]) -> pd.DataFrame:
@@ -323,10 +467,393 @@ def dataframe(rows: list[dict[str, str]]) -> pd.DataFrame:
         "unit_coverage_percentage",
         "listed_price_coverage_percentage",
         "spa_price_coverage_percentage",
+        "developer_project_count",
+        "latitude",
+        "longitude",
+        "component_sales_count",
     ):
         if column in frame.columns:
             frame[column] = pd.to_numeric(frame[column], errors="coerce")
     return frame
+
+
+def render_project_details(
+    selected: pd.Series,
+    observation_history: pd.DataFrame,
+    *,
+    container_key: str,
+    manual_container_key: str,
+) -> None:
+    """Render the complete project-detail hierarchy for any tracked project."""
+    preferred_name = str(
+        selected.get("display_name")
+        or selected.get("project_name")
+        or selected.get("source_project_id")
+    )
+    teduh_name = str(selected.get("project_name") or "")
+    st.markdown(f"### {preferred_name}")
+    if teduh_name and teduh_name.casefold() != preferred_name.casefold():
+        st.caption(f"TEDUH registered name: {teduh_name}")
+
+    project_history = (
+        observation_history[
+            observation_history["source_project_id"].astype(str)
+            == str(selected.get("source_project_id"))
+        ].copy()
+        if not observation_history.empty
+        else pd.DataFrame()
+    )
+    if not project_history.empty:
+        project_history["observation_date"] = pd.to_datetime(
+            project_history["snapshot_date"], errors="coerce"
+        )
+        project_history = project_history.dropna(subset=["observation_date"]).sort_values(
+            ["observation_date", "retrieved_at"]
+        )
+
+    with st.container(border=True, key=container_key):
+        identity_region, identity_left, identity_middle, identity_right, identity_status = st.columns(5)
+        identity_region.markdown("**Region** · `TEDUH/local`")
+        identity_region.write(region_label(selected.get("region")))
+        identity_left.markdown("**Parent group** · `Local`")
+        identity_left.write(display_text(selected.get("parent_group")))
+        identity_middle.markdown("**Registered developer / SPV** · `TEDUH`")
+        identity_middle.write(display_text(selected.get("developer_name")))
+        identity_right.markdown("**Project code** · `TEDUH`")
+        identity_right.write(display_text(selected.get("source_project_id")))
+        identity_status.markdown("**Current status** · `TEDUH`")
+        identity_status.write(display_text(selected.get("project_status")))
+
+        status_folded = str(selected.get("project_status") or "").casefold()
+        if any(term in status_folded for term in ("sakit", "lewat", "batal")):
+            st.error(
+                f"Current TEDUH exception: {display_text(selected.get('project_status'))}. "
+                "This is a public HIMS project classification, not a customer or facility risk classification."
+            )
+
+        st.markdown("#### Current monitoring summary")
+        progress_columns = st.columns(5)
+        progress_columns[0].metric(
+            "Units sold · Calculated",
+            f"{whole_number(selected.get('sold_units'))} / {whole_number(selected.get('reported_total_units'))}",
+            help="Calculated from individual TEDUH unit sales statuses.",
+        )
+        progress_columns[1].metric(
+            "Sales · Calculated",
+            pct(selected.get("sales_percentage")),
+            help="Sold units divided by comparable TEDUH unit records; not an official TEDUH percentage.",
+        )
+        progress_columns[2].metric(
+            "Construction · Calculated",
+            pct(selected.get("construction_percentage")),
+            help="Unit-weighted calculation from TEDUH component rows where reconciliation checks pass.",
+        )
+        progress_columns[3].metric(
+            "CCC/CFO · TEDUH",
+            display_text(selected.get("ccc_obtained")),
+            help="Based on TEDUH project or component completion evidence.",
+        )
+        progress_columns[4].metric(
+            "Actual VP · TEDUH",
+            display_date(selected.get("vp_date")),
+            help="Latest valid VP date in TEDUH's component-status rows.",
+        )
+
+        if len(project_history) >= 2:
+            previous = project_history.iloc[-2]
+            current_observation = project_history.iloc[-1]
+            st.info(
+                "Latest recorded movement: "
+                f"units sold {signed_number(float(current_observation.get('sold_units') or 0) - float(previous.get('sold_units') or 0))}; "
+                f"sales {signed_number(float(current_observation.get('sales_percentage') or 0) - float(previous.get('sales_percentage') or 0), decimals=1, suffix=' pp')}; "
+                f"construction {signed_number(float(current_observation.get('construction_percentage') or 0) - float(previous.get('construction_percentage') or 0), decimals=1, suffix=' pp')}; "
+                f"status {status_change(previous.get('project_status'), current_observation.get('project_status'))}."
+            )
+
+        value_columns = st.columns(4)
+        value_columns[0].metric(
+            "Potential listed GDV · Calculated",
+            money(selected.get("potential_listed_gdv")),
+            help="Sum of TEDUH listed unit prices when coverage and reconciliation checks pass.",
+        )
+        value_columns[1].metric(
+            "Estimated value sold · Calculated",
+            money(selected.get("estimated_sold_value")),
+            help="Uses recorded SPA prices where available and TEDUH listed-price fallback otherwise.",
+        )
+        value_columns[2].metric(
+            "Recorded SPA value · Calculated",
+            money(selected.get("recorded_spa_sales_value")),
+            help="Sum of available TEDUH SPA prices for sold unit records.",
+        )
+        value_columns[3].metric(
+            "Remaining listed value · Calculated",
+            money(selected.get("remaining_listed_value")),
+            help="Sum of TEDUH listed prices for non-sold unit records where coverage checks pass.",
+        )
+        st.caption(
+            "Value measures are analytical monitoring estimates, not audited developer GDV, revenue or credit conclusions."
+        )
+
+        component_sales = json_rows(selected.get("component_sales_json"))
+        with st.expander("Sales by TEDUH block/component", expanded=len(component_sales) > 1):
+            if not component_sales:
+                st.info("Component sales will appear after the next refresh using the updated data model.")
+            else:
+                component_frame = pd.DataFrame(component_sales)
+                component_frame["Component"] = component_frame["component_label"].map(display_text)
+                component_frame["Property type"] = component_frame["property_type"].map(display_text)
+                component_frame["Sold"] = component_frame["sold_units"].map(whole_number)
+                component_frame["Units"] = component_frame["total_units"].map(whole_number)
+                component_frame["Sales"] = component_frame["sales_percentage"].map(pct)
+                component_frame["Unsold"] = component_frame["unsold_units"].map(whole_number)
+                component_frame["Confidence"] = component_frame["confidence"].astype(str).str.title()
+                st.dataframe(
+                    component_frame[
+                        ["Component", "Property type", "Sold", "Units", "Sales", "Unsold", "Confidence"]
+                    ],
+                    hide_index=True,
+                    width="stretch",
+                )
+                st.caption(
+                    "Calculated independently from each TEDUH unit group. Neutral component labels are used when TEDUH supplies no block name; unit-number prefixes are not interpreted as block names."
+                )
+                if selected.get("component_sales_note") not in (None, "") and pd.notna(
+                    selected.get("component_sales_note")
+                ):
+                    st.warning(str(selected.get("component_sales_note")))
+
+        agreement_expanded = any(
+            display_text(selected.get(field)) not in {"N/A", "Tidak", "No"}
+            for field in ("vp_period_amended", "approved_extension_period", "revised_vp_date")
+        )
+        with st.expander("Contractual timeline and completion", expanded=agreement_expanded):
+            contract_top = st.columns(4)
+            contract_top[0].metric("Agreement type · TEDUH", display_text(selected.get("agreement_type")))
+            contract_top[1].metric(
+                "Original construction period · TEDUH",
+                display_text(selected.get("original_construction_period")),
+            )
+            contract_top[2].metric("First SPA · TEDUH", display_date(selected.get("first_spa_date")))
+            contract_top[3].metric(
+                "Original contractual VP · TEDUH", display_date(selected.get("expected_vp_date"))
+            )
+            contract_bottom = st.columns(4)
+            contract_bottom[0].metric(
+                "VP period amended · TEDUH", display_text(selected.get("vp_period_amended"))
+            )
+            contract_bottom[1].metric(
+                "Approved extension · TEDUH", display_text(selected.get("approved_extension_period"))
+            )
+            contract_bottom[2].metric(
+                "Revised construction period · TEDUH",
+                display_text(selected.get("revised_construction_period")),
+            )
+            contract_bottom[3].metric(
+                "Revised contractual VP · TEDUH", display_date(selected.get("revised_vp_date"))
+            )
+            completion = st.columns(3)
+            completion[0].metric("CCC/CFO date · TEDUH", display_date(selected.get("ccc_date")))
+            completion[1].metric("Actual VP date · TEDUH", display_date(selected.get("vp_date")))
+            completion[2].metric(
+                "SPA price range · TEDUH",
+                numeric_range(
+                    selected.get("teduh_spa_price_min"),
+                    selected.get("teduh_spa_price_max"),
+                    prefix="RM ",
+                ),
+            )
+
+        construction_rows = json_rows(selected.get("construction_rows_json"))
+        differing_component_statuses = len(
+            {str(row.get("komponen") or "") for row in construction_rows}
+        ) > 1
+        with st.expander("Component construction details", expanded=differing_component_statuses):
+            if not construction_rows:
+                st.info("TEDUH component construction rows are unavailable for this project.")
+            else:
+                component_detail_rows = []
+                for index, row in enumerate(construction_rows, start=1):
+                    area = str(row.get("keluasan") or "").strip()
+                    if area in {"", "0", "0.0", "-"}:
+                        area = "N/A"
+                    component_detail_rows.append(
+                        {
+                            "Component": f"Component {index}",
+                            "Property type": display_text(row.get("jenis")),
+                            "Floors": display_text(row.get("tingkat")),
+                            "Bedrooms": display_text(row.get("bilik")),
+                            "Bathrooms": display_text(row.get("tandas")),
+                            "Built-up (m²)": area,
+                            "Units": whole_number(row.get("unit")),
+                            "Price range": f"{source_money(row.get('hargaMin'))}–{source_money(row.get('hargaMax')).replace('RM ', '')}",
+                            "Construction": pct(float(row["peratus"]))
+                            if row.get("peratus") not in (None, "", "-")
+                            else "N/A",
+                            "Status": display_text(row.get("komponen")),
+                            "CCC/CFO": display_date(row.get("ccc")),
+                            "VP": display_date(row.get("vp")),
+                        }
+                    )
+                st.dataframe(component_detail_rows, hide_index=True, width="stretch")
+                st.caption(
+                    "TEDUH component status is based on the latest HIMS 7(f) reporting. Component construction rows are not joined to sales groups unless TEDUH provides a reliable shared identifier."
+                )
+
+        permit_history = json_rows(selected.get("permit_history_json"))
+        with st.expander("Project, permit and developer details"):
+            project_details = st.columns(4)
+            project_details[0].metric(
+                "Development · TEDUH", display_text(selected.get("development_type"))
+            )
+            project_details[1].metric("Location · TEDUH", display_text(selected.get("project_location")))
+            project_details[2].metric("Current permit · TEDUH", display_text(selected.get("permit_number")))
+            project_details[3].metric(
+                "Permit validity · TEDUH",
+                f"{display_date(selected.get('permit_start_date'))} – {display_date(selected.get('permit_end_date'))}",
+            )
+            developer_details = st.columns(4)
+            developer_details[0].metric(
+                "Developer status · TEDUH", display_text(selected.get("developer_status"))
+            )
+            developer_details[1].metric(
+                "Developer code · TEDUH", display_text(selected.get("developer_id"))
+            )
+            developer_details[2].metric(
+                "Developer licence · TEDUH", display_text(selected.get("developer_license_number"))
+            )
+            developer_details[3].metric(
+                "Licence validity · TEDUH",
+                f"{display_date(selected.get('developer_license_start_date'))} – {display_date(selected.get('developer_license_end_date'))}",
+            )
+            if permit_history:
+                st.markdown("**Previous advertising and sales permits · TEDUH**")
+                history_display = [
+                    {
+                        "Permit": display_text(row.get("no_lesenpermit")),
+                        "Start": display_date(row.get("tarikh_mula")),
+                        "End": display_date(row.get("tarikh_luput")),
+                        "Period": display_text(row.get("tempoh")),
+                    }
+                    for row in permit_history
+                ]
+                st.dataframe(history_display, hide_index=True, width="stretch")
+
+        has_manual_launch = bool(str(selected.get("manual_launch_date") or "").strip())
+        has_manual_built_up = pd.notna(selected.get("manual_built_up_min_sqft")) and pd.notna(
+            selected.get("manual_built_up_max_sqft")
+        )
+        has_manual_psf = pd.notna(selected.get("manual_psf_min")) and pd.notna(
+            selected.get("manual_psf_max")
+        )
+        has_manual_notes = bool(str(selected.get("tracking_notes") or "").strip())
+        if has_manual_launch or has_manual_built_up or has_manual_psf or has_manual_notes:
+            with st.expander("Locally entered supplementary details"):
+                with st.container(key=manual_container_key):
+                    st.caption("These fields are maintained locally and do not come from TEDUH.")
+                    manual_count = int(has_manual_launch) + int(has_manual_built_up) + int(has_manual_psf)
+                    manual_columns = st.columns(manual_count) if manual_count else []
+                    manual_index = 0
+                    if has_manual_launch:
+                        manual_columns[manual_index].metric(
+                            "Launch date · Local", display_date(selected.get("manual_launch_date"))
+                        )
+                        manual_index += 1
+                    if has_manual_built_up:
+                        manual_columns[manual_index].metric(
+                            "Built-up range · Local",
+                            numeric_range(
+                                selected.get("manual_built_up_min_sqft"),
+                                selected.get("manual_built_up_max_sqft"),
+                                suffix=" sqft",
+                            ),
+                        )
+                        manual_index += 1
+                    if has_manual_psf:
+                        manual_columns[manual_index].metric(
+                            "PSF range · Local",
+                            numeric_range(
+                                selected.get("manual_psf_min"),
+                                selected.get("manual_psf_max"),
+                                prefix="RM ",
+                                suffix="/sqft",
+                            ),
+                        )
+                    if has_manual_notes:
+                        st.markdown("**Monitoring notes · Local**")
+                        st.write(str(selected.get("tracking_notes")))
+
+        with st.expander("Weekly progress and data provenance"):
+            timing = st.columns(2)
+            timing[0].metric(
+                "Retrieved from TEDUH · Application",
+                display_timestamp(selected.get("retrieved_at")),
+                help="Timestamp generated by this application when the API response was obtained.",
+            )
+            timing[1].metric(
+                "TEDUH displayed data through · TEDUH frontend",
+                display_date(selected.get("source_dataset_as_of")),
+                help="Portal-wide TEDUH frontend label; not an authoritative per-project API timestamp.",
+            )
+            if project_history.empty:
+                st.info("No dated observations have been stored for this project yet.")
+            else:
+                project_history["week_start"] = project_history["observation_date"] - pd.to_timedelta(
+                    project_history["observation_date"].dt.weekday, unit="D"
+                )
+                weekly = project_history.groupby("week_start", as_index=False).tail(1).copy()
+                weekly = weekly.sort_values("week_start")
+                weekly["Week"] = weekly["week_start"].dt.strftime("%d %b %Y")
+                weekly["Units sold"] = weekly["sold_units"]
+                weekly["Weekly units sold"] = weekly["sold_units"].diff()
+                weekly["Sales %"] = weekly["sales_percentage"]
+                weekly["Sales change"] = weekly["sales_percentage"].diff()
+                weekly["Construction %"] = weekly["construction_percentage"]
+                weekly["Construction change"] = weekly["construction_percentage"].diff()
+                weekly["Status"] = weekly["project_status"]
+                if len(weekly) == 1:
+                    st.info(
+                        "This is the opening observation. Past sales dates cannot be reconstructed from TEDUH's current snapshot."
+                    )
+                chart = weekly.set_index("week_start")[["Sales %", "Construction %"]].dropna(
+                    axis=1, how="all"
+                )
+                if not chart.empty:
+                    st.line_chart(chart, height=260)
+                weekly["Units sold display"] = weekly["Units sold"].map(whole_number)
+                weekly["Weekly units sold display"] = weekly["Weekly units sold"].map(signed_number)
+                weekly["Sales display"] = weekly["Sales %"].map(pct)
+                weekly["Sales change display"] = weekly["Sales change"].map(
+                    lambda value: signed_number(value, decimals=1, suffix=" pp")
+                )
+                weekly["Construction display"] = weekly["Construction %"].map(pct)
+                weekly["Construction change display"] = weekly["Construction change"].map(
+                    lambda value: signed_number(value, decimals=1, suffix=" pp")
+                )
+                st.dataframe(
+                    weekly[
+                        [
+                            "Week",
+                            "Units sold display",
+                            "Weekly units sold display",
+                            "Sales display",
+                            "Sales change display",
+                            "Construction display",
+                            "Construction change display",
+                            "Status",
+                        ]
+                    ],
+                    hide_index=True,
+                    width="stretch",
+                    column_config={
+                        "Units sold display": "Units sold",
+                        "Weekly units sold display": "Weekly units sold",
+                        "Sales display": "Sales",
+                        "Sales change display": "Sales change",
+                        "Construction display": "Construction",
+                        "Construction change display": "Construction change",
+                    },
+                )
 
 
 st.markdown('<div class="app-kicker">Commercial Banking · Real Estate</div>', unsafe_allow_html=True)
@@ -350,7 +877,6 @@ for current_row in current_rows:
         "manual_built_up_max_sqft",
         "manual_psf_min",
         "manual_psf_max",
-        "priority",
         "tracking_notes",
     ):
         current_row[field] = tracked.get(field, "")
@@ -374,9 +900,12 @@ st.markdown(
 app_notice = st.session_state.pop("app_notice", None)
 if app_notice:
     st.success(app_notice)
+app_error = st.session_state.pop("app_error", None)
+if app_error:
+    st.error(app_error)
 
-overview_tab, shortlist_tab, add_tab, discovery_tab, alerts_tab, audit_tab = st.tabs(
-    ["Overview", "Shortlist", "Add or edit", "Discovery", "Alerts", "Audit log"]
+overview_tab, all_projects_tab, shortlist_tab, add_tab, discovery_tab, alerts_tab, audit_tab = st.tabs(
+    ["Overview", "All projects", "Shortlist", "Add or edit", "Discovery", "Alerts", "Audit log"]
 )
 
 with overview_tab:
@@ -384,7 +913,11 @@ with overview_tab:
         st.info("The authorized starter shortlist is ready. Run the first shortlist refresh to populate TEDUH metrics.")
         st.caption(f"Tracking {len(active_shortlist):,} projects")
     else:
-        observed_regions = set(current["region"].dropna().astype(str))
+        reporting_current = current[current["project_set"] == "reporting_set"].copy()
+        if reporting_current.empty:
+            st.info("No Reporting Set projects are currently available. Add them from the Shortlist or Discovery tabs.")
+            st.stop()
+        observed_regions = set(reporting_current["region"].dropna().astype(str))
         region_options = ["All regions"] + [
             region for region in REGION_CONFIGS if region in observed_regions
         ]
@@ -396,14 +929,61 @@ with overview_tab:
             format_func=region_label,
         )
         view = (
-            current
+            reporting_current
             if selected_region == "All regions"
-            else current[current["region"] == selected_region]
+            else reporting_current[reporting_current["region"] == selected_region]
         )
-        st.caption(f"Tracking {len(view):,} projects")
+        st.caption(f"Showing {len(view):,} Reporting Set projects")
         risk_mask = view["project_status"].fillna("").str.casefold().str.contains("sakit|lewat|batal")
 
-        st.subheader("Projects needing attention")
+        st.subheader("Changes since the previous observation")
+        changes = latest_project_changes(view, history)
+        if changes.empty:
+            st.info("No sales, construction or TEDUH status changes were recorded for these projects.")
+        else:
+            changes["region_display"] = changes["region"].map(region_label)
+            changes["status_display"] = changes.apply(
+                lambda row: status_change(row["previous_status"], row["current_status"]), axis=1
+            )
+            changes["sold_change_display"] = changes["sold_units_delta"].map(
+                lambda value: signed_number(value, zero_label="No change")
+            )
+            changes["sales_change_display"] = changes["sales_percentage_delta"].map(
+                lambda value: signed_number(value, decimals=1, suffix=" pp", zero_label="No change")
+            )
+            changes["construction_change_display"] = changes["construction_percentage_delta"].map(
+                lambda value: signed_number(value, decimals=1, suffix=" pp", zero_label="No change")
+            )
+            changes["comparison_display"] = changes.apply(
+                lambda row: f"{display_date(row['previous_snapshot_date'])} → {display_date(row['current_snapshot_date'])}",
+                axis=1,
+            )
+            change_columns = [
+                "display_name",
+                "region_display",
+                "status_display",
+                "sold_change_display",
+                "sales_change_display",
+                "construction_change_display",
+                "comparison_display",
+            ]
+            st.dataframe(
+                changes[change_columns],
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "display_name": "Project",
+                    "region_display": "Region",
+                    "status_display": "TEDUH status",
+                    "sold_change_display": "Units sold",
+                    "sales_change_display": "Sales",
+                    "construction_change_display": "Construction",
+                    "comparison_display": "Compared observations",
+                },
+            )
+        st.caption("Each project is compared with its latest earlier dated observation.")
+
+        st.subheader("Current TEDUH Exceptions")
         risk_columns = ["display_name", "parent_group", "project_status", "sales_percentage", "construction_percentage"]
         if selected_region == "All regions":
             risk_columns.insert(1, "region")
@@ -411,11 +991,15 @@ with overview_tab:
             risk_mask,
             risk_columns,
         ].copy()
+        risk["parent_group"] = risk["parent_group"].fillna("").replace("", "N/A")
         if "region" in risk.columns:
             risk["region"] = risk["region"].map(region_label)
         if risk.empty:
             st.success("No current Sakit, Lewat or cancelled statuses.")
         else:
+            risk["sales_display"] = risk["sales_percentage"].map(pct)
+            risk["construction_display"] = risk["construction_percentage"].map(pct)
+            risk = risk.drop(columns=["sales_percentage", "construction_percentage"])
             st.dataframe(
                 risk,
                 hide_index=True,
@@ -425,12 +1009,12 @@ with overview_tab:
                     "region": "Region",
                     "parent_group": "Parent group",
                     "project_status": "Status",
-                    "sales_percentage": st.column_config.NumberColumn("Sales", format="%.1f%%"),
-                    "construction_percentage": st.column_config.NumberColumn("Construction", format="%.1f%%"),
+                    "sales_display": "Sales",
+                    "construction_display": "Construction",
                 },
             )
 
-        st.subheader("Current shortlist snapshot")
+        st.subheader("Current Reporting Set snapshot")
         st.caption("Select one project row to open its financial and source details.")
         snapshot = view.copy().reset_index(drop=True)
         snapshot["developer_or_parent_group"] = snapshot.apply(
@@ -483,37 +1067,266 @@ with overview_tab:
             preferred_name = str(selected.get("display_name") or selected.get("project_name") or selected.get("source_project_id"))
             teduh_name = str(selected.get("project_name") or "")
             parent_group = str(selected.get("parent_group") or "")
-            registered_developer = str(selected.get("developer_name") or "—")
+            registered_developer = str(selected.get("developer_name") or "N/A")
 
             st.markdown(f"### {preferred_name}")
             if teduh_name and teduh_name.casefold() != preferred_name.casefold():
                 st.caption(f"TEDUH registered name: {teduh_name}")
 
-            with st.container(border=True, key="project_detail_panel"):
-                identity_region, identity_left, identity_middle, identity_right = st.columns(4)
-                identity_region.markdown("**Region**")
-                identity_region.write(region_label(selected.get("region")))
-                identity_left.markdown("**Parent group**")
-                identity_left.write(parent_group or "Not mapped")
-                identity_middle.markdown("**Registered developer / SPV**")
-                identity_middle.write(registered_developer)
-                identity_right.markdown("**TEDUH project code**")
-                identity_right.write(str(selected.get("source_project_id") or "—"))
+            project_history = (
+                history[
+                    history["source_project_id"].astype(str)
+                    == str(selected.get("source_project_id"))
+                ].copy()
+                if not history.empty
+                else pd.DataFrame()
+            )
+            if not project_history.empty:
+                project_history["observation_date"] = pd.to_datetime(
+                    project_history["snapshot_date"], errors="coerce"
+                )
+                project_history = project_history.dropna(subset=["observation_date"]).sort_values(
+                    ["observation_date", "retrieved_at"]
+                )
 
-                st.markdown("#### TEDUH project information")
-                market_details = st.columns(2)
-                market_details[0].metric("First SPA", display_date(selected.get("first_spa_date")))
-                market_details[1].metric(
-                    "SPA price range",
-                    numeric_range(
-                        selected.get("teduh_spa_price_min"),
-                        selected.get("teduh_spa_price_max"),
-                        prefix="RM ",
-                    ),
+            with st.container(border=True, key="project_detail_panel"):
+                identity_region, identity_left, identity_middle, identity_right, identity_status = st.columns(5)
+                identity_region.markdown("**Region** · `TEDUH/local`")
+                identity_region.write(region_label(selected.get("region")))
+                identity_left.markdown("**Parent group** · `Local`")
+                identity_left.write(parent_group or "N/A")
+                identity_middle.markdown("**Registered developer / SPV** · `TEDUH`")
+                identity_middle.write(registered_developer)
+                identity_right.markdown("**Project code** · `TEDUH`")
+                identity_right.write(str(selected.get("source_project_id") or "N/A"))
+                identity_status.markdown("**Current status** · `TEDUH`")
+                identity_status.write(display_text(selected.get("project_status")))
+
+                status_folded = str(selected.get("project_status") or "").casefold()
+                if any(term in status_folded for term in ("sakit", "lewat", "batal")):
+                    st.error(
+                        f"Current TEDUH exception: {display_text(selected.get('project_status'))}. "
+                        "This is a public HIMS project classification, not a customer or facility risk classification."
+                    )
+
+                st.markdown("#### Current monitoring summary")
+                progress_columns = st.columns(5)
+                progress_columns[0].metric(
+                    "Units sold · Calculated",
+                    f"{whole_number(selected.get('sold_units'))} / {whole_number(selected.get('reported_total_units'))}",
+                    help="Calculated from individual TEDUH unit sales statuses.",
+                )
+                progress_columns[1].metric(
+                    "Sales · Calculated",
+                    pct(selected.get("sales_percentage")),
+                    help="Sold units divided by comparable TEDUH unit records; not an official TEDUH percentage.",
+                )
+                progress_columns[2].metric(
+                    "Construction · Calculated",
+                    pct(selected.get("construction_percentage")),
+                    help="Unit-weighted calculation from TEDUH component rows where reconciliation checks pass.",
+                )
+                progress_columns[3].metric(
+                    "CCC/CFO · TEDUH",
+                    display_text(selected.get("ccc_obtained")),
+                    help="Based on TEDUH project or component completion evidence.",
+                )
+                progress_columns[4].metric(
+                    "Actual VP · TEDUH",
+                    display_date(selected.get("vp_date")),
+                    help="Latest valid VP date in TEDUH's component-status rows.",
+                )
+
+                if len(project_history) >= 2:
+                    previous = project_history.iloc[-2]
+                    current_observation = project_history.iloc[-1]
+                    st.info(
+                        "Latest recorded movement: "
+                        f"units sold {signed_number(float(current_observation.get('sold_units') or 0) - float(previous.get('sold_units') or 0))}; "
+                        f"sales {signed_number(float(current_observation.get('sales_percentage') or 0) - float(previous.get('sales_percentage') or 0), decimals=1, suffix=' pp')}; "
+                        f"construction {signed_number(float(current_observation.get('construction_percentage') or 0) - float(previous.get('construction_percentage') or 0), decimals=1, suffix=' pp')}; "
+                        f"status {status_change(previous.get('project_status'), current_observation.get('project_status'))}."
+                    )
+
+                value_columns = st.columns(4)
+                value_columns[0].metric(
+                    "Potential listed GDV · Calculated",
+                    money(selected.get("potential_listed_gdv")),
+                    help="Sum of TEDUH listed unit prices when coverage and reconciliation checks pass.",
+                )
+                value_columns[1].metric(
+                    "Estimated value sold · Calculated",
+                    money(selected.get("estimated_sold_value")),
+                    help="Uses recorded SPA prices where available and TEDUH listed-price fallback otherwise.",
+                )
+                value_columns[2].metric(
+                    "Recorded SPA value · Calculated",
+                    money(selected.get("recorded_spa_sales_value")),
+                    help="Sum of available TEDUH SPA prices for sold unit records.",
+                )
+                value_columns[3].metric(
+                    "Remaining listed value · Calculated",
+                    money(selected.get("remaining_listed_value")),
+                    help="Sum of TEDUH listed prices for non-sold unit records where coverage checks pass.",
                 )
                 st.caption(
-                    "SPA price range uses the minimum and maximum prices displayed in TEDUH's component-status table."
+                    "Value measures are analytical monitoring estimates, not audited developer GDV, revenue or credit conclusions."
                 )
+
+                component_sales = json_rows(selected.get("component_sales_json"))
+                multiple_components = len(component_sales) > 1
+                with st.expander(
+                    "Sales by TEDUH block/component",
+                    expanded=multiple_components,
+                ):
+                    if not component_sales:
+                        st.info("Component sales will appear after the next refresh using the updated data model.")
+                    else:
+                        component_frame = pd.DataFrame(component_sales)
+                        component_frame["Component"] = component_frame["component_label"].map(display_text)
+                        component_frame["Property type"] = component_frame["property_type"].map(display_text)
+                        component_frame["Sold"] = component_frame["sold_units"].map(whole_number)
+                        component_frame["Units"] = component_frame["total_units"].map(whole_number)
+                        component_frame["Sales"] = component_frame["sales_percentage"].map(pct)
+                        component_frame["Unsold"] = component_frame["unsold_units"].map(whole_number)
+                        component_frame["Confidence"] = component_frame["confidence"].astype(str).str.title()
+                        st.dataframe(
+                            component_frame[
+                                ["Component", "Property type", "Sold", "Units", "Sales", "Unsold", "Confidence"]
+                            ],
+                            hide_index=True,
+                            width="stretch",
+                        )
+                        st.caption(
+                            "Calculated independently from each TEDUH unit group. Neutral component labels are used when TEDUH supplies no block name; unit-number prefixes are not interpreted as block names."
+                        )
+                        if selected.get("component_sales_note") not in (None, "") and pd.notna(
+                            selected.get("component_sales_note")
+                        ):
+                            st.warning(str(selected.get("component_sales_note")))
+
+                agreement_expanded = any(
+                    display_text(selected.get(field)) not in {"N/A", "Tidak", "No"}
+                    for field in ("vp_period_amended", "approved_extension_period", "revised_vp_date")
+                )
+                with st.expander("Contractual timeline and completion", expanded=agreement_expanded):
+                    contract_top = st.columns(4)
+                    contract_top[0].metric(
+                        "Agreement type · TEDUH",
+                        display_text(selected.get("agreement_type")),
+                        help="Type of statutory sale and purchase agreement reported by TEDUH.",
+                    )
+                    contract_top[1].metric(
+                        "Original construction period · TEDUH",
+                        display_text(selected.get("original_construction_period")),
+                    )
+                    contract_top[2].metric(
+                        "First SPA · TEDUH",
+                        display_date(selected.get("first_spa_date")),
+                    )
+                    contract_top[3].metric(
+                        "Original contractual VP · TEDUH",
+                        display_date(selected.get("expected_vp_date")),
+                    )
+                    contract_bottom = st.columns(4)
+                    contract_bottom[0].metric(
+                        "VP period amended · TEDUH",
+                        display_text(selected.get("vp_period_amended")),
+                    )
+                    contract_bottom[1].metric(
+                        "Approved extension · TEDUH",
+                        display_text(selected.get("approved_extension_period")),
+                    )
+                    contract_bottom[2].metric(
+                        "Revised construction period · TEDUH",
+                        display_text(selected.get("revised_construction_period")),
+                    )
+                    contract_bottom[3].metric(
+                        "Revised contractual VP · TEDUH",
+                        display_date(selected.get("revised_vp_date")),
+                    )
+                    completion = st.columns(3)
+                    completion[0].metric("CCC/CFO date · TEDUH", display_date(selected.get("ccc_date")))
+                    completion[1].metric("Actual VP date · TEDUH", display_date(selected.get("vp_date")))
+                    completion[2].metric(
+                        "SPA price range · TEDUH",
+                        numeric_range(
+                            selected.get("teduh_spa_price_min"),
+                            selected.get("teduh_spa_price_max"),
+                            prefix="RM ",
+                        ),
+                    )
+
+                construction_rows = json_rows(selected.get("construction_rows_json"))
+                differing_component_statuses = len(
+                    {str(row.get("komponen") or "") for row in construction_rows}
+                ) > 1
+                with st.expander(
+                    "Component construction details",
+                    expanded=differing_component_statuses,
+                ):
+                    if not construction_rows:
+                        st.info("TEDUH component construction rows are unavailable for this project.")
+                    else:
+                        component_detail_rows = []
+                        for index, row in enumerate(construction_rows, start=1):
+                            area = str(row.get("keluasan") or "").strip()
+                            if area in {"", "0", "0.0", "-"}:
+                                area = "N/A"
+                            component_detail_rows.append(
+                                {
+                                    "Component": f"Component {index}",
+                                    "Property type": display_text(row.get("jenis")),
+                                    "Floors": display_text(row.get("tingkat")),
+                                    "Bedrooms": display_text(row.get("bilik")),
+                                    "Bathrooms": display_text(row.get("tandas")),
+                                    "Built-up (m²)": area,
+                                    "Units": whole_number(row.get("unit")),
+                                    "Price range": f"{source_money(row.get('hargaMin'))}–{source_money(row.get('hargaMax')).replace('RM ', '')}",
+                                    "Construction": pct(float(row["peratus"])) if row.get("peratus") not in (None, "", "-") else "N/A",
+                                    "Status": display_text(row.get("komponen")),
+                                    "CCC/CFO": display_date(row.get("ccc")),
+                                    "VP": display_date(row.get("vp")),
+                                }
+                            )
+                        st.dataframe(component_detail_rows, hide_index=True, width="stretch")
+                        st.caption(
+                            "TEDUH component status is based on the latest HIMS 7(f) reporting. Component construction rows are not joined to sales groups unless TEDUH provides a reliable shared identifier."
+                        )
+
+                permit_history = json_rows(selected.get("permit_history_json"))
+                with st.expander("Project, permit and developer details"):
+                    project_details = st.columns(4)
+                    project_details[0].metric("Development · TEDUH", display_text(selected.get("development_type")))
+                    project_details[1].metric("Location · TEDUH", display_text(selected.get("project_location")))
+                    project_details[2].metric("Current permit · TEDUH", display_text(selected.get("permit_number")))
+                    project_details[3].metric(
+                        "Permit validity · TEDUH",
+                        f"{display_date(selected.get('permit_start_date'))} – {display_date(selected.get('permit_end_date'))}",
+                    )
+                    developer_details = st.columns(4)
+                    developer_details[0].metric("Developer status · TEDUH", display_text(selected.get("developer_status")))
+                    developer_details[1].metric("Developer code · TEDUH", display_text(selected.get("developer_id")))
+                    developer_details[2].metric(
+                        "Developer licence · TEDUH", display_text(selected.get("developer_license_number"))
+                    )
+                    developer_details[3].metric(
+                        "Licence validity · TEDUH",
+                        f"{display_date(selected.get('developer_license_start_date'))} – {display_date(selected.get('developer_license_end_date'))}",
+                    )
+                    if permit_history:
+                        st.markdown("**Previous advertising and sales permits · TEDUH**")
+                        history_display = []
+                        for row in permit_history:
+                            history_display.append(
+                                {
+                                    "Permit": display_text(row.get("no_lesenpermit")),
+                                    "Start": display_date(row.get("tarikh_mula")),
+                                    "End": display_date(row.get("tarikh_luput")),
+                                    "Period": display_text(row.get("tempoh")),
+                                }
+                            )
+                        st.dataframe(history_display, hide_index=True, width="stretch")
 
                 has_manual_launch = bool(str(selected.get("manual_launch_date") or "").strip())
                 has_manual_built_up = pd.notna(selected.get("manual_built_up_min_sqft")) and pd.notna(
@@ -522,146 +1335,245 @@ with overview_tab:
                 has_manual_psf = pd.notna(selected.get("manual_psf_min")) and pd.notna(
                     selected.get("manual_psf_max")
                 )
-                if has_manual_launch or has_manual_built_up or has_manual_psf:
-                    with st.container(key="manual_project_details"):
-                        st.markdown("#### Locally entered supplementary details")
-                        st.caption(
-                            "Only the fields inside this grey section were entered locally; they do not come from TEDUH."
-                        )
-                        manual_columns = st.columns(
-                            int(has_manual_launch) + int(has_manual_built_up) + int(has_manual_psf)
-                        )
-                        manual_index = 0
-                        if has_manual_launch:
-                            manual_columns[manual_index].metric(
-                                "Launch date", display_date(selected.get("manual_launch_date"))
+                has_manual_notes = bool(str(selected.get("tracking_notes") or "").strip())
+                if has_manual_launch or has_manual_built_up or has_manual_psf or has_manual_notes:
+                    with st.expander("Locally entered supplementary details"):
+                        with st.container(key="manual_project_details"):
+                            st.caption(
+                                "These fields are maintained locally and do not come from TEDUH."
                             )
-                            manual_index += 1
-                        if has_manual_built_up:
-                            manual_columns[manual_index].metric(
-                                "Built-up range",
-                                numeric_range(
-                                    selected.get("manual_built_up_min_sqft"),
-                                    selected.get("manual_built_up_max_sqft"),
-                                    suffix=" sqft",
-                                ),
-                            )
-                            manual_index += 1
-                        if has_manual_psf:
-                            manual_columns[manual_index].metric(
-                                "PSF range",
-                                numeric_range(
-                                    selected.get("manual_psf_min"),
-                                    selected.get("manual_psf_max"),
-                                    prefix="RM ",
-                                    suffix="/sqft",
-                                ),
-                            )
+                            manual_columns = st.columns(
+                                int(has_manual_launch) + int(has_manual_built_up) + int(has_manual_psf)
+                            ) if has_manual_launch or has_manual_built_up or has_manual_psf else []
+                            manual_index = 0
+                            if has_manual_launch:
+                                manual_columns[manual_index].metric(
+                                    "Launch date · Local", display_date(selected.get("manual_launch_date"))
+                                )
+                                manual_index += 1
+                            if has_manual_built_up:
+                                manual_columns[manual_index].metric(
+                                    "Built-up range · Local",
+                                    numeric_range(
+                                        selected.get("manual_built_up_min_sqft"),
+                                        selected.get("manual_built_up_max_sqft"),
+                                        suffix=" sqft",
+                                    ),
+                                )
+                                manual_index += 1
+                            if has_manual_psf:
+                                manual_columns[manual_index].metric(
+                                    "PSF range · Local",
+                                    numeric_range(
+                                        selected.get("manual_psf_min"),
+                                        selected.get("manual_psf_max"),
+                                        prefix="RM ",
+                                        suffix="/sqft",
+                                    ),
+                                )
+                            if has_manual_notes:
+                                st.markdown("**Monitoring notes · Local**")
+                                st.write(str(selected.get("tracking_notes")))
 
-                st.markdown("#### Current monitoring metrics")
-                st.caption(
-                    "The figures below come from the current TEDUH snapshot or are calculated from its unit and component data."
-                )
-
-                value_top = st.columns(2)
-                value_top[0].metric("Potential listed GDV", money(selected.get("potential_listed_gdv")))
-                value_top[1].metric("Estimated value sold", money(selected.get("estimated_sold_value")))
-                value_bottom = st.columns(2)
-                value_bottom[0].metric("Recorded SPA value", money(selected.get("recorded_spa_sales_value")))
-                value_bottom[1].metric("Remaining listed value", money(selected.get("remaining_listed_value")))
-
-                progress_columns = st.columns(4)
-                progress_columns[0].metric(
-                    "Units sold",
-                    f"{whole_number(selected.get('sold_units'))} / {whole_number(selected.get('reported_total_units'))}",
-                )
-                progress_columns[1].metric("Calculated sales", pct(selected.get("sales_percentage")))
-                progress_columns[2].metric("Construction", pct(selected.get("construction_percentage")))
-                progress_columns[3].metric("CCC/CFO obtained", str(selected.get("ccc_obtained") or "—"))
-
-                if str(selected.get("ccc_obtained") or "") == "Yes":
-                    completion_columns = st.columns(2)
-                    completion_columns[0].metric(
-                        "CCC/CFO date", display_date(selected.get("ccc_date"))
+                with st.expander("Weekly progress and data provenance"):
+                    timing = st.columns(2)
+                    timing[0].metric(
+                        "Retrieved from TEDUH · Application",
+                        display_timestamp(selected.get("retrieved_at")),
+                        help="Timestamp generated by this application when the API response was obtained.",
                     )
-                    completion_columns[1].metric("VP date", display_date(selected.get("vp_date")))
-                    st.caption(
-                        "Completion dates are the latest valid component dates displayed by TEDUH; a dash means TEDUH does not provide one."
+                    timing[1].metric(
+                        "TEDUH displayed data through · TEDUH frontend",
+                        display_date(selected.get("source_dataset_as_of")),
+                        help="Portal-wide TEDUH frontend label; not an authoritative per-project API timestamp.",
                     )
-
-                st.caption(
-                    "Estimated value sold uses recorded SPA prices where available and listed-price fallback otherwise. "
-                    "Potential GDV and remaining value are analytical listed-price measures, not audited developer figures."
-                )
-
-                st.markdown("#### Data timing")
-                timing = st.columns(2)
-                timing[0].metric("Retrieved from TEDUH", display_timestamp(selected.get("retrieved_at")))
-                timing[1].metric("TEDUH displayed data through", display_date(selected.get("source_dataset_as_of")))
-                st.caption(
-                    "The retrieval time is recorded by this application. TEDUH's displayed data-through date is a "
-                    "frontend label and is not an authoritative per-project API update timestamp."
-                )
-
-                st.markdown("#### Weekly progress trend")
-                project_history = history[
-                    history["source_project_id"].astype(str) == str(selected.get("source_project_id"))
-                ].copy() if not history.empty else pd.DataFrame()
-                if project_history.empty:
-                    st.info("No dated observations have been stored for this project yet.")
-                else:
-                    project_history["observation_date"] = pd.to_datetime(
-                        project_history["snapshot_date"], errors="coerce"
-                    )
-                    project_history = project_history.dropna(subset=["observation_date"]).sort_values(
-                        ["observation_date", "retrieved_at"]
-                    )
-                    project_history["week_start"] = (
-                        project_history["observation_date"]
-                        - pd.to_timedelta(project_history["observation_date"].dt.weekday, unit="D")
-                    )
-                    weekly = project_history.groupby("week_start", as_index=False).tail(1).copy()
-                    weekly = weekly.sort_values("week_start")
-                    weekly["Week"] = weekly["week_start"].dt.strftime("%d %b %Y")
-                    weekly["Units sold"] = weekly["sold_units"]
-                    weekly["Weekly units sold"] = weekly["sold_units"].diff()
-                    weekly["Sales %"] = weekly["sales_percentage"]
-                    weekly["Sales change"] = weekly["sales_percentage"].diff()
-                    weekly["Construction %"] = weekly["construction_percentage"]
-                    weekly["Construction change"] = weekly["construction_percentage"].diff()
-                    weekly["Status"] = weekly["project_status"]
-
-                    if len(weekly) == 1:
-                        st.info(
-                            "This is the opening observation. Week-on-week changes will appear after the next weekly refresh; "
-                            "past sales dates cannot be reconstructed from TEDUH's current snapshot."
+                    if project_history.empty:
+                        st.info("No dated observations have been stored for this project yet.")
+                    else:
+                        project_history["week_start"] = (
+                            project_history["observation_date"]
+                            - pd.to_timedelta(project_history["observation_date"].dt.weekday, unit="D")
                         )
-                    chart = weekly.set_index("week_start")[["Sales %", "Construction %"]]
-                    st.line_chart(chart, height=260)
-                    st.dataframe(
-                        weekly[
-                            [
-                                "Week",
-                                "Units sold",
-                                "Weekly units sold",
-                                "Sales %",
-                                "Sales change",
-                                "Construction %",
-                                "Construction change",
-                                "Status",
-                            ]
-                        ],
-                        hide_index=True,
-                        width="stretch",
-                        column_config={
-                            "Units sold": st.column_config.NumberColumn(format="%d"),
-                            "Weekly units sold": st.column_config.NumberColumn(format="%+d"),
-                            "Sales %": st.column_config.NumberColumn(format="%.1f%%"),
-                            "Sales change": st.column_config.NumberColumn(format="%+.1f pp"),
-                            "Construction %": st.column_config.NumberColumn(format="%.1f%%"),
-                            "Construction change": st.column_config.NumberColumn(format="%+.1f pp"),
-                        },
-                    )
+                        weekly = project_history.groupby("week_start", as_index=False).tail(1).copy()
+                        weekly = weekly.sort_values("week_start")
+                        weekly["Week"] = weekly["week_start"].dt.strftime("%d %b %Y")
+                        weekly["Units sold"] = weekly["sold_units"]
+                        weekly["Weekly units sold"] = weekly["sold_units"].diff()
+                        weekly["Sales %"] = weekly["sales_percentage"]
+                        weekly["Sales change"] = weekly["sales_percentage"].diff()
+                        weekly["Construction %"] = weekly["construction_percentage"]
+                        weekly["Construction change"] = weekly["construction_percentage"].diff()
+                        weekly["Status"] = weekly["project_status"]
+                        if len(weekly) == 1:
+                            st.info(
+                                "This is the opening observation. Past sales dates cannot be reconstructed from TEDUH's current snapshot."
+                            )
+                        chart = weekly.set_index("week_start")[["Sales %", "Construction %"]].dropna(
+                            axis=1, how="all"
+                        )
+                        if not chart.empty:
+                            st.line_chart(chart, height=260)
+                        weekly["Units sold display"] = weekly["Units sold"].map(whole_number)
+                        weekly["Weekly units sold display"] = weekly["Weekly units sold"].map(signed_number)
+                        weekly["Sales display"] = weekly["Sales %"].map(pct)
+                        weekly["Sales change display"] = weekly["Sales change"].map(
+                            lambda value: signed_number(value, decimals=1, suffix=" pp")
+                        )
+                        weekly["Construction display"] = weekly["Construction %"].map(pct)
+                        weekly["Construction change display"] = weekly["Construction change"].map(
+                            lambda value: signed_number(value, decimals=1, suffix=" pp")
+                        )
+                        st.dataframe(
+                            weekly[
+                                [
+                                    "Week",
+                                    "Units sold display",
+                                    "Weekly units sold display",
+                                    "Sales display",
+                                    "Sales change display",
+                                    "Construction display",
+                                    "Construction change display",
+                                    "Status",
+                                ]
+                            ],
+                            hide_index=True,
+                            width="stretch",
+                            column_config={
+                                "Units sold display": "Units sold",
+                                "Weekly units sold display": "Weekly units sold",
+                                "Sales display": "Sales",
+                                "Sales change display": "Sales change",
+                                "Construction display": "Construction",
+                                "Construction change display": "Construction change",
+                            },
+                        )
+
+with all_projects_tab:
+    st.subheader("All tracked projects")
+    st.caption("Search and filter the complete Reporting Set, Comparator Set and General project universe.")
+    if current.empty:
+        st.info("Refresh the shortlist to populate current TEDUH metrics.")
+    else:
+        project_search, group_search = st.columns(2)
+        project_query = project_search.text_input(
+            "Search project name",
+            key="all_projects_name_search",
+            placeholder="Local or TEDUH registered name",
+        )
+        group_query = group_search.text_input(
+            "Search parent group or developer",
+            key="all_projects_group_search",
+            placeholder="Parent group, developer or SPV",
+        )
+
+        filter_region, filter_set, filter_status = st.columns(3)
+        region_filter = filter_region.selectbox(
+            "Region",
+            ["All regions"] + [
+                region for region in REGION_CONFIGS if region in set(current["region"].dropna())
+            ],
+            format_func=region_label,
+            key="all_projects_region",
+        )
+        available_sets = [value for value in PROJECT_SETS if value in set(current["project_set"].dropna())]
+        set_filter = filter_set.multiselect(
+            "Project set",
+            available_sets,
+            format_func=lambda value: SET_LABELS[value],
+            key="all_projects_set",
+        )
+        available_statuses = sorted(value for value in current["project_status"].dropna().unique() if value)
+        status_filter = filter_status.multiselect(
+            "TEDUH status",
+            available_statuses,
+            key="all_projects_status",
+        )
+        all_view = current.copy()
+        if region_filter != "All regions":
+            all_view = all_view[all_view["region"] == region_filter]
+        if set_filter:
+            all_view = all_view[all_view["project_set"].isin(set_filter)]
+        if status_filter:
+            all_view = all_view[all_view["project_status"].isin(status_filter)]
+        if project_query.strip():
+            needle = project_query.strip().casefold()
+            all_view = all_view[
+                all_view[["display_name", "project_name"]]
+                .fillna("")
+                .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
+            ]
+        if group_query.strip():
+            needle = group_query.strip().casefold()
+            all_view = all_view[
+                all_view[["parent_group", "developer_name"]]
+                .fillna("")
+                .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
+            ]
+
+        st.caption(f"Showing {len(all_view):,} of {len(current):,} projects")
+        if all_view.empty:
+            st.info("No projects match the selected filters.")
+        else:
+            all_view = all_view.copy()
+            all_view["developer_or_parent_group"] = all_view.apply(
+                lambda row: row.get("parent_group") or row.get("developer_name") or "N/A",
+                axis=1,
+            )
+            all_view["region_display"] = all_view["region"].map(region_label)
+            all_view["project_set_display"] = (
+                all_view["project_set"].map(SET_LABELS).fillna(all_view["project_set"])
+            )
+            all_view["sold_display"] = all_view["sold_units"].map(whole_number)
+            all_view["units_display"] = all_view["reported_total_units"].map(whole_number)
+            all_view["sales_display"] = all_view["sales_percentage"].map(pct)
+            all_view["construction_display"] = all_view["construction_percentage"].map(pct)
+            all_view["potential_gdv_display"] = all_view["potential_listed_gdv"].map(money)
+            set_order = {"reporting_set": 0, "general": 1, "comparator_set": 2}
+            all_view["_set_rank"] = all_view["project_set"].map(set_order).fillna(9)
+            all_view = all_view.sort_values(["_set_rank", "display_name"]).reset_index(drop=True)
+            all_projects_event = st.dataframe(
+                all_view[
+                    [
+                        "display_name",
+                        "developer_or_parent_group",
+                        "region_display",
+                        "project_status",
+                        "sold_display",
+                        "units_display",
+                        "sales_display",
+                        "construction_display",
+                        "potential_gdv_display",
+                        "project_set_display",
+                    ]
+                ],
+                hide_index=True,
+                width="stretch",
+                key="all_projects_snapshot",
+                on_select="rerun",
+                selection_mode="single-row",
+                selection_default={"selection": {"rows": [0]}},
+                column_config={
+                    "display_name": "Project",
+                    "developer_or_parent_group": "Parent group / developer",
+                    "region_display": "Region",
+                    "project_status": "TEDUH status",
+                    "sold_display": "Sold",
+                    "units_display": "Units",
+                    "sales_display": "Sales",
+                    "construction_display": "Construction",
+                    "potential_gdv_display": "Potential GDV",
+                    "project_set_display": "Project set",
+                },
+            )
+            selected_all_rows = all_projects_event.selection.rows
+            if selected_all_rows:
+                selected_all = all_view.iloc[selected_all_rows[0]]
+                render_project_details(
+                    selected_all,
+                    history,
+                    container_key="all_projects_detail_panel",
+                    manual_container_key="all_projects_manual_project_details",
+                )
 
 with shortlist_tab:
     st.subheader("Saved projects")
@@ -694,7 +1606,7 @@ with shortlist_tab:
         )
         st.dataframe(
             shortlist_frame[
-                ["source_project_id", "region_display", "display_name", "parent_group", "project_set", "priority", "active", "tracking_notes"]
+                ["source_project_id", "region_display", "display_name", "parent_group", "project_set", "active", "tracking_notes"]
             ],
             hide_index=True,
             width="stretch",
@@ -704,11 +1616,12 @@ with shortlist_tab:
                 "display_name": "Display name (local or TEDUH)",
                 "parent_group": "Parent group",
                 "project_set": "Project set",
-                "priority": "Priority",
                 "active": "Active",
                 "tracking_notes": "Your notes",
             },
         )
+    st.divider()
+    render_refresh_status_panel()
     st.divider()
     refresh_spacer, refresh_action = st.columns([3, 1])
     with refresh_action:
@@ -717,11 +1630,16 @@ with shortlist_tab:
         progress_messages: list[str] = []
         refresh_progress = st.progress(0.0, text="Preparing TEDUH shortlist refresh…")
 
-        def update_refresh_progress(completed: int, total: int) -> None:
+        def update_refresh_progress(
+            completed: int,
+            total: int,
+            project_code: str,
+            succeeded: bool,
+        ) -> None:
             fraction = completed / total if total else 0.0
             refresh_progress.progress(
                 fraction,
-                text=f"Reviewed {completed}/{total} shortlist projects",
+                text=f"Reviewed {completed}/{total} shortlist projects · {project_code}",
             )
 
         try:
@@ -737,9 +1655,8 @@ with shortlist_tab:
             )
             st.rerun()
         except Exception as exc:  # Streamlit must surface source failures without replacing valid output.
-            st.error(str(exc))
-            if progress_messages:
-                st.caption(progress_messages[-1])
+            st.session_state["app_error"] = str(exc)
+            st.rerun()
 
 with add_tab:
     st.subheader("Add or edit a tracked project")
@@ -766,7 +1683,7 @@ with add_tab:
             help="Only enter this when your team uses a clearer or more familiar project name.",
         )
         parent_group = second.text_input("Parent group", value=default.get("parent_group", ""))
-        third, fourth, fifth = st.columns(3)
+        third, fourth = st.columns(2)
         region = third.selectbox(
             "Region",
             list(REGION_CONFIGS),
@@ -778,11 +1695,6 @@ with add_tab:
             list(PROJECT_SETS),
             index=list(PROJECT_SETS).index(default.get("project_set", "general")),
             format_func=lambda value: SET_LABELS[value],
-        )
-        priority = fifth.selectbox(
-            "Priority",
-            list(PRIORITIES),
-            index=list(PRIORITIES).index(default.get("priority", "medium")),
         )
         st.markdown("**Optional manually entered project details**")
         st.caption(
@@ -834,7 +1746,6 @@ with add_tab:
                         "manual_built_up_max_sqft": built_up_max,
                         "manual_psf_min": psf_min,
                         "manual_psf_max": psf_max,
-                        "priority": priority,
                         "tracking_notes": notes,
                         "active": "Yes" if active else "No",
                         "date_added": default.get("date_added", ""),
@@ -947,7 +1858,6 @@ with discovery_tab:
                             "display_name": discovered_name or choices[discovered_code]["registry_name"],
                             "parent_group": discovered_parent,
                             "project_set": discovered_set,
-                            "priority": "medium",
                             "tracking_notes": "",
                             "active": "Yes",
                             "origin": "teduh_discovery",
@@ -964,12 +1874,12 @@ with discovery_tab:
 
 with alerts_tab:
     st.subheader("Monitoring alerts")
-    st.caption("Direct TEDUH risk statuses appear immediately. Change-based alerts become available after at least two dated observations.")
+    st.caption("Current TEDUH status exceptions appear immediately. Change-based alerts become available after at least two dated observations.")
     if not alert_rows:
         st.info("No alerts are available yet. Refresh the shortlist to create an observation.")
     else:
-        severity_order = {"critical": 0, "high": 1, "info": 2}
-        alerts = pd.DataFrame(alert_rows)
+        alert_level_order = {"Critical": 0, "High": 1, "Review": 2, "Notice": 3}
+        alerts = pd.DataFrame([present_alert(row) for row in alert_rows])
         if "region" not in alerts.columns:
             alerts["region"] = DEFAULT_REGION
         alert_region = st.radio(
@@ -981,23 +1891,44 @@ with alerts_tab:
         )
         if alert_region != "All regions":
             alerts = alerts[alerts["region"] == alert_region]
-        alerts["region"] = alerts["region"].map(region_label)
-        alerts["_rank"] = alerts["severity"].map(severity_order).fillna(9)
-        alerts = alerts.sort_values(["_rank", "display_name"]).drop(columns="_rank")
-        st.dataframe(
-            alerts,
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "snapshot_date": "Observation",
-                "region": "Region",
-                "severity": "Severity",
-                "alert_code": "Alert",
-                "source_project_id": "TEDUH code",
-                "display_name": "Project",
-                "message": "Explanation",
-            },
+        alerts["project_set"] = alerts["source_project_id"].astype(str).map(
+            lambda code: shortlist_by_project.get(code, {}).get("project_set") or "general"
         )
+        alerts["region"] = alerts["region"].map(region_label)
+        alerts["_rank"] = alerts["alert_level"].map(alert_level_order).fillna(9)
+        alerts = alerts.sort_values(["_rank", "display_name"])
+        alert_columns = [
+            "snapshot_date",
+            "region",
+            "alert_level",
+            "alert_category",
+            "alert_label",
+            "source_project_id",
+            "display_name",
+            "message",
+        ]
+        alert_column_config = {
+            "snapshot_date": "Observation",
+            "region": "Region",
+            "alert_level": "Level",
+            "alert_category": "Category",
+            "alert_label": "Alert",
+            "source_project_id": "TEDUH code",
+            "display_name": "Project",
+            "message": "Explanation",
+        }
+        for project_set in ("reporting_set", "comparator_set", "general"):
+            set_alerts = alerts[alerts["project_set"] == project_set]
+            st.markdown(f"#### {SET_LABELS[project_set]} alerts ({len(set_alerts):,})")
+            if set_alerts.empty:
+                st.info(f"No {SET_LABELS[project_set].lower()} alerts for the selected region.")
+                continue
+            st.dataframe(
+                set_alerts[alert_columns],
+                hide_index=True,
+                width="stretch",
+                column_config=alert_column_config,
+            )
 
 with audit_tab:
     st.subheader("Project audit log")

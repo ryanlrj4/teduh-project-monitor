@@ -22,7 +22,6 @@ Open **Add or edit** in the dashboard.
 - **Parent group** is your team's public corporate-group mapping.
 - **Project set** can be `reporting_set`, `comparator_set`, or `general`.
 - **Launch date**, **built-up range**, and **PSF range** are optional local fields. Launch date remains separate from TEDUH's First SPA date, and blank values stay hidden.
-- **Priority** can be `high`, `medium`, or `low`.
 - **Tracking notes** are local and optional.
 - **Active** controls whether the project is included in the next shortlist refresh.
 
@@ -34,10 +33,18 @@ A normal refresh makes two public API requests for each uncached active project:
 
 The output has two kinds of columns:
 
-- **Local shortlist fields:** region, display name, parent group, project set, priority, notes, and active flag.
-- **TEDUH/derived fields:** registered project/developer names, status, units, calculated sales, construction, CCC, values, confidence, dates, and source URLs.
+- **Local shortlist fields:** region, display name, parent group, project set, notes, and active flag.
+- **TEDUH/derived fields:** registered project/developer names, status, units, calculated overall and component sales, construction, contractual dates, CCC, values, confidence, permit/licence information, and source URLs.
 
 Manual fields are preserved when TEDUH is refreshed. A source failure cannot silently replace the last valid output.
+
+The Shortlist tab retains a refresh-status panel after Streamlit reruns. It records whether the latest attempt succeeded or failed, project counts, elapsed time, same-day cache usage, source data-through date, publication outcome, and recent runs. A failed run explicitly records that the previous valid snapshot was preserved.
+
+## Project details and component sales
+
+The detail page keeps the current overall status, sales, construction, completion and latest movement visible. Less frequently used contractual, component, permit/licensing, local-field, provenance and historical information is placed in collapsible sections.
+
+Sales by component are calculated independently from each `unitGroups[]` collection in TEDUH's unit response. The application never averages component percentages to produce the overall percentage. When TEDUH supplies no friendly block name, the dashboard uses neutral labels such as `Component 1`; it does not infer a tower name from unit-number prefixes.
 
 ## Understanding Discovery
 

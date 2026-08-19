@@ -10,11 +10,12 @@ Double-click `run_dashboard.bat`.
 
 The dashboard opens locally in your browser. Use these tabs:
 
-- **Overview** — region-filtered sales, construction, status, CCC, scale, and project details.
-- **Shortlist** — search and filter every saved project.
-- **Add or edit** — add a TEDUH code or change the local display name, parent group, project set, priority, notes, or active flag.
+- **Overview** — Reporting Set changes, current TEDUH exceptions, current metrics, and project details.
+- **All projects** — search and filter the complete project universe by name, parent group/developer, region, project set, and TEDUH status.
+- **Shortlist** — review saved-project metadata, persistent refresh status, and run a manual TEDUH refresh.
+- **Add or edit** — add a TEDUH code or change the local display name, parent group, project set, notes, or active flag.
 - **Discovery** — create or reuse a searchable regional TEDUH catalogue. A successful live discovery is limited to once per region per local calendar day.
-- **Alerts** — review Sakit, Lewat, cancellation, missing construction, and changes between dated observations.
+- **Alerts** — review business-facing status exceptions, source revisions, data-quality notices, and changes between dated observations.
 - **Audit log** — review project additions and each manually edited field, including who made the change and its previous and new values.
 
 The dashboard retains a manual refresh button. `run_weekly_refresh.bat` is the safe Monday-oriented scheduler command: it refreshes only when the current Monday-based week has no successful observation. Registering the command with Windows Task Scheduler is a deployment step; the computer must be on and connected when it runs.
@@ -31,6 +32,8 @@ The dashboard retains a manual refresh button. `run_weekly_refresh.bat` is the s
 Legacy projects are excluded when their first SPA date, or permit start fallback, predates the HIMS cutoff. This prevents partial post-2022 rows from being presented as a complete project history.
 
 CCC/CFO obtained remains a Yes/No field. `Yes` is supported by a completed-with-CCC/CFO project status or explicit component evidence. When TEDUH supplies component dates, the project details also show the latest valid CCC/CFO date and VP date separately.
+
+Project details distinguish TEDUH facts, locally maintained fields, application-generated timestamps, and deterministic calculations. Additional collapsible sections show contractual VP changes, component construction, permit/developer licensing, and sales calculated separately for each TEDUH unit group. Neutral component labels are used when TEDUH does not provide a block name.
 
 ## First-time installation
 
@@ -78,6 +81,7 @@ The older full-universe proof command remains available as `teduh_phase2.cli run
 - Current Parquet: `data/processed/shortlist_current.parquet`
 - Dated history: `data/history/shortlist_history.csv` and `.parquet`
 - Alerts: `data/processed/shortlist_alerts.csv`
+- Latest refresh status and recent-run history: ignored local JSON files in `data/processed/`
 - Project-change audit log: `data/audit/project_changes.csv` (created on the first new addition or edit)
 - Exactly five validation rows: `data/processed/shortlist_validation_sample.csv`
 - Beginner operating guide: `docs/PHASE3_GUIDE.md`
@@ -85,6 +89,6 @@ The older full-universe proof command remains available as `teduh_phase2.cli run
 
 ## Safety behavior
 
-A refresh stages and verifies every active project before replacing the previous valid files. HTML/error pages, missing required fields, invalid project codes, state/region mismatches, pre-HIMS projects, and incomplete shortlist refreshes stop publication rather than turning missing facts into zeroes.
+A refresh stages and verifies every active project before replacing the previous valid files. HTML/error pages, missing required fields, invalid project codes, state/region mismatches, pre-HIMS projects, and incomplete shortlist refreshes stop publication rather than turning missing facts into zeroes. The dashboard retains the last run's status after rerun and explicitly states when a failed attempt preserved the previous valid snapshot.
 
 The tool is a local analytical aid, not a system of record. Keep customer-confidential information, facility balances, credit decisions, and other bank-restricted data outside its free-text notes unless the environment has been approved for that information.
