@@ -20,6 +20,7 @@ from .shortlist import load_shortlist
 
 
 Progress = Callable[[str], None]
+ProjectProgress = Callable[[int, int], None]
 MANUAL_FIELD_SPECS: list[tuple[str, str]] = [
     ("region", "VARCHAR"),
     ("display_name", "VARCHAR"),
@@ -249,7 +250,12 @@ def _validation_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return selected
 
 
-def snapshot_shortlist(settings: Settings, *, progress: Progress = print) -> dict[str, Any]:
+def snapshot_shortlist(
+    settings: Settings,
+    *,
+    progress: Progress = print,
+    project_progress: ProjectProgress | None = None,
+) -> dict[str, Any]:
     today = date.today().isoformat()
     source_dataset_as_of = (date.today() - timedelta(days=1)).isoformat()
     shortlist = load_shortlist(settings, active_only=True)
@@ -320,6 +326,8 @@ def snapshot_shortlist(settings: Settings, *, progress: Progress = print) -> dic
                 records.append(record)
             except (SourceAnomaly, ValueError) as exc:
                 failures.append(f"{code}: {exc}")
+            if project_progress is not None:
+                project_progress(index, len(shortlist))
             if index == 1 or index % 5 == 0 or index == len(shortlist):
                 progress(f"Reviewed {index}/{len(shortlist)} shortlist projects.")
     if failures:

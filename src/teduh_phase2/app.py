@@ -715,9 +715,23 @@ with shortlist_tab:
         refresh_clicked = st.button("Refresh TEDUH shortlist", type="primary", width="stretch")
     if refresh_clicked:
         progress_messages: list[str] = []
+        refresh_progress = st.progress(0.0, text="Preparing TEDUH shortlist refresh…")
+
+        def update_refresh_progress(completed: int, total: int) -> None:
+            fraction = completed / total if total else 0.0
+            refresh_progress.progress(
+                fraction,
+                text=f"Reviewed {completed}/{total} shortlist projects",
+            )
+
         try:
             with st.spinner("Refreshing active projects sequentially from TEDUH…"):
-                result = snapshot_shortlist(SETTINGS, progress=progress_messages.append)
+                result = snapshot_shortlist(
+                    SETTINGS,
+                    progress=progress_messages.append,
+                    project_progress=update_refresh_progress,
+                )
+            refresh_progress.progress(1.0, text="Refresh completed and validated")
             st.session_state["app_notice"] = (
                 f"Refresh completed: {result['project_count']} projects and {result['alert_count']} alerts."
             )
