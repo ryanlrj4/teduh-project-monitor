@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pandas as pd
@@ -15,6 +16,40 @@ ALERT_PRESENTATION = {
     "construction_unavailable": ("Construction unavailable", "Data quality", "Notice"),
     "completion_certificate_obtained": ("CCC/CFO evidence reported", "Completion", "Notice"),
 }
+
+TEDUH_ENGLISH_LABELS = {
+    "aktif": "Active",
+    "tidak aktif": "Inactive",
+    "berfasa": "Phased development",
+    "jadual g": "Schedule G",
+    "jadual h": "Schedule H",
+    "ya": "Yes",
+    "tidak": "No",
+    "pangsapuri servis": "Serviced apartment",
+    "pangsapuri suite": "Apartment suite",
+    "rumah pangsa/kondo": "Flat/condominium",
+    "rumah teres": "Terraced house",
+    "daerah barat daya, pulau pinang": "Southwest District, Penang",
+    "daerah timor laut, pulau pinang": "Northeast District, Penang",
+    "kuala lumpur, wp kuala lumpur": "Kuala Lumpur, Federal Territory of Kuala Lumpur",
+    "wp kuala lumpur": "Federal Territory of Kuala Lumpur",
+}
+
+
+def translate_teduh_text(value: object, *, english: bool) -> str:
+    """Translate selected TEDUH display values without modifying stored source data."""
+    text = str(value)
+    if not english:
+        return text
+    translated = TEDUH_ENGLISH_LABELS.get(text.strip().casefold())
+    if translated:
+        return translated
+    period = re.fullmatch(r"(\d+(?:\.\d+)?)\s+bulan", text.strip(), flags=re.IGNORECASE)
+    if period:
+        amount = period.group(1)
+        unit = "month" if amount in {"1", "1.0"} else "months"
+        return f"{amount} {unit}"
+    return text
 
 
 def _changed(previous: object, current: object) -> bool:

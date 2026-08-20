@@ -21,7 +21,11 @@ from teduh_phase2.monitor import (
     snapshot_shortlist,
 )
 from teduh_phase2.metrics import component_completion_dates
-from teduh_phase2.presentation import latest_project_changes, present_alert
+from teduh_phase2.presentation import (
+    latest_project_changes,
+    present_alert,
+    translate_teduh_text,
+)
 from teduh_phase2.refresh_status import load_refresh_history, load_refresh_status
 from teduh_phase2.shortlist import (
     PROJECT_SETS,
@@ -105,8 +109,25 @@ st.markdown(
     }
     .st-key-project_detail_panel [data-testid="stMetricValue"],
     .st-key-all_projects_detail_panel [data-testid="stMetricValue"] {
-        font-size: 1.15rem !important;
-        line-height: 1.3 !important;
+        font-size: clamp(.9rem, 1.15vw, 1.05rem) !important;
+        line-height: 1.25 !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+    }
+    .st-key-project_detail_panel [data-testid="stMetricValue"] > div,
+    .st-key-all_projects_detail_panel [data-testid="stMetricValue"] > div,
+    .st-key-project_detail_panel [data-testid="stMetricValue"] p,
+    .st-key-all_projects_detail_panel [data-testid="stMetricValue"] p {
+        font-size: inherit !important;
+        line-height: inherit !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
     }
     .st-key-manual_project_details,
     .st-key-all_projects_manual_project_details {
@@ -323,7 +344,10 @@ def status_change(previous: object, current_value: object) -> str:
 def display_text(value: object) -> str:
     if value in (None, "") or pd.isna(value):
         return "N/A"
-    return str(value)
+    return translate_teduh_text(
+        value,
+        english=st.session_state.get("translate_teduh_values", True),
+    )
 
 
 def json_rows(value: object) -> list[dict[str, object]]:
@@ -345,6 +369,36 @@ def display_duration(value: object) -> str:
         return f"{seconds:.1f} sec"
     minutes, remaining = divmod(int(round(seconds)), 60)
     return f"{minutes} min {remaining:02d} sec"
+
+
+def render_project_map(selected: pd.Series) -> None:
+    """Show TEDUH's project marker when the response contains valid coordinates."""
+    try:
+        latitude = float(selected.get("latitude"))
+        longitude = float(selected.get("longitude"))
+    except (TypeError, ValueError):
+        latitude = longitude = float("nan")
+
+    if pd.isna(latitude) or pd.isna(longitude) or not (-90 <= latitude <= 90) or not (
+        -180 <= longitude <= 180
+    ):
+        st.markdown("**Coordinates · TEDUH**")
+        st.write("N/A")
+        st.caption("TEDUH does not provide valid coordinates for this project.")
+        return
+
+    st.markdown("**Project marker · TEDUH**")
+    st.caption(f"Coordinates · TEDUH: {latitude:.6f}, {longitude:.6f}")
+    st.map(
+        pd.DataFrame([{"latitude": latitude, "longitude": longitude}]),
+        latitude="latitude",
+        longitude="longitude",
+        zoom=15,
+        height=280,
+    )
+    st.caption(
+        "The marker uses TEDUH-reported coordinates and may represent an approximate project location rather than a verified site boundary."
+    )
 
 
 def render_refresh_status_panel() -> None:
@@ -726,6 +780,7 @@ def render_project_details(
                 "Licence validity · TEDUH",
                 f"{display_date(selected.get('developer_license_start_date'))} – {display_date(selected.get('developer_license_end_date'))}",
             )
+            render_project_map(selected)
             if permit_history:
                 st.markdown("**Previous advertising and sales permits · TEDUH**")
                 history_display = [
@@ -897,6 +952,16 @@ st.markdown(
     f'<b>TEDUH displayed data through:</b> {display_date(source_as_of)}</div>',
     unsafe_allow_html=True,
 )
+with st.popover("Settings"):
+    st.markdown("**TEDUH display language**")
+    st.toggle(
+        "Translate TEDUH values to English",
+        value=True,
+        key="translate_teduh_values",
+    )
+    st.caption(
+        "Turn this off to show the original Malay source wording. Official HIMS status terms such as Lancar, Sakit, Lewat and Siap Dengan CCC/CFO remain unchanged."
+    )
 app_notice = st.session_state.pop("app_notice", None)
 if app_notice:
     st.success(app_notice)
@@ -1314,6 +1379,7 @@ with overview_tab:
                         "Licence validity · TEDUH",
                         f"{display_date(selected.get('developer_license_start_date'))} – {display_date(selected.get('developer_license_end_date'))}",
                     )
+                    render_project_map(selected)
                     if permit_history:
                         st.markdown("**Previous advertising and sales permits · TEDUH**")
                         history_display = []

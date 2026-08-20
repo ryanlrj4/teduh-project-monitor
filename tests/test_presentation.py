@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from teduh_phase2.presentation import latest_project_changes, present_alert
+from teduh_phase2.presentation import (
+    latest_project_changes,
+    present_alert,
+    translate_teduh_text,
+)
 
 
 def test_latest_project_changes_only_returns_changed_projects() -> None:
@@ -71,3 +75,19 @@ def test_present_alert_uses_business_facing_level_and_category() -> None:
     assert alert["alert_label"] == "Reported sold units decreased"
     assert alert["alert_category"] == "Source revision"
     assert alert["alert_level"] == "Review"
+
+
+def test_translate_teduh_text_translates_common_source_values() -> None:
+    assert translate_teduh_text("Berfasa", english=True) == "Phased development"
+    assert translate_teduh_text("Jadual H", english=True) == "Schedule H"
+    assert translate_teduh_text("36 Bulan", english=True) == "36 months"
+    assert translate_teduh_text("Daerah Timor Laut, Pulau Pinang", english=True) == (
+        "Northeast District, Penang"
+    )
+
+
+def test_translate_teduh_text_preserves_malay_and_official_status_terms() -> None:
+    assert translate_teduh_text("Berfasa", english=False) == "Berfasa"
+    assert translate_teduh_text("Lancar", english=True) == "Lancar"
+    assert translate_teduh_text("Sakit", english=True) == "Sakit"
+    assert translate_teduh_text("Siap Dengan CCC", english=True) == "Siap Dengan CCC"
