@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import csv
-import os
 import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -10,6 +8,7 @@ from typing import Any
 
 from .config import DEFAULT_REGION, REGION_CONFIGS, Settings
 from .normalize import clean_text
+from .storage import atomic_write_csv, read_csv
 
 
 SHORTLIST_FIELDS = [
@@ -137,11 +136,7 @@ def normalize_shortlist_row(row: dict[str, Any]) -> dict[str, str]:
 
 
 def load_shortlist(settings: Settings, *, active_only: bool = False) -> list[dict[str, str]]:
-    path = shortlist_path(settings)
-    if not path.exists():
-        return []
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        rows = [normalize_shortlist_row(dict(row)) for row in csv.DictReader(handle)]
+    rows = [normalize_shortlist_row(dict(row)) for row in read_csv(shortlist_path(settings))]
     seen: set[str] = set()
     for row in rows:
         code = row["source_project_id"]
@@ -155,7 +150,6 @@ def load_shortlist(settings: Settings, *, active_only: bool = False) -> list[dic
 
 def write_shortlist(settings: Settings, rows: list[dict[str, Any]]) -> Path:
     path = shortlist_path(settings)
-    path.parent.mkdir(parents=True, exist_ok=True)
     normalized = [normalize_shortlist_row(row) for row in rows]
     codes = [row["source_project_id"] for row in normalized]
     if len(codes) != len(set(codes)):
@@ -163,42 +157,27 @@ def write_shortlist(settings: Settings, rows: list[dict[str, Any]]) -> Path:
     normalized.sort(
         key=lambda row: (row["region"].casefold(), row["display_name"].casefold(), row["source_project_id"])
     )
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=SHORTLIST_FIELDS)
-        writer.writeheader()
-        writer.writerows(normalized)
-    os.replace(temporary, path)
+    atomic_write_csv(path, normalized, SHORTLIST_FIELDS)
     return path
 
 
 def load_audit_log(settings: Settings) -> list[dict[str, str]]:
-    path = audit_log_path(settings)
-    if not path.exists():
-        return []
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        return [
-            {field: str(row.get(field) or "") for field in AUDIT_FIELDS}
-            for row in csv.DictReader(handle)
-        ]
+    return [
+        {field: str(row.get(field) or "") for field in AUDIT_FIELDS}
+        for row in read_csv(audit_log_path(settings))
+    ]
 
 
 def _append_audit_rows(settings: Settings, rows: list[dict[str, Any]]) -> Path:
     path = audit_log_path(settings)
     if not rows:
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
     combined = load_audit_log(settings)
     combined.extend(
         {field: str(row.get(field) or "") for field in AUDIT_FIELDS}
         for row in rows
     )
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=AUDIT_FIELDS)
-        writer.writeheader()
-        writer.writerows(combined)
-    os.replace(temporary, path)
+    atomic_write_csv(path, combined, AUDIT_FIELDS)
     return path
 
 

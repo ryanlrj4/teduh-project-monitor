@@ -6,189 +6,13 @@ import shutil
 import uuid
 from collections import Counter
 from datetime import datetime
-from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import duckdb
-
 from .config import HIMS_UNIT_DATA_START_ISO, SEARCH_PAGE_URL, Settings
+from .schema import FIELD_SPECS, FIELDS, VALIDATION_FIELDS
+from .storage import csv_value, parquet_row_count, write_csv, write_parquet
 from .validate import issue_counts
-
-
-FIELD_SPECS: list[tuple[str, str]] = [
-    ("snapshot_date", "DATE"),
-    ("source", "VARCHAR"),
-    ("source_project_id", "VARCHAR"),
-    ("project_name", "VARCHAR"),
-    ("developer_id", "VARCHAR"),
-    ("developer_name", "VARCHAR"),
-    ("developer_status", "VARCHAR"),
-    ("developer_project_count", "BIGINT"),
-    ("developer_license_number", "VARCHAR"),
-    ("developer_license_start_date", "DATE"),
-    ("developer_license_end_date", "DATE"),
-    ("state", "VARCHAR"),
-    ("district", "VARCHAR"),
-    ("city", "VARCHAR"),
-    ("project_location", "VARCHAR"),
-    ("latitude", "DOUBLE"),
-    ("longitude", "DOUBLE"),
-    ("source_state_value", "VARCHAR"),
-    ("source_district_value", "VARCHAR"),
-    ("source_city_value", "VARCHAR"),
-    ("permit_number", "VARCHAR"),
-    ("permit_start_date", "DATE"),
-    ("permit_end_date", "DATE"),
-    ("first_spa_date", "DATE"),
-    ("teduh_spa_price_min", "DECIMAL(24,2)"),
-    ("teduh_spa_price_max", "DECIMAL(24,2)"),
-    ("hims_project_reference_date", "DATE"),
-    ("hims_project_reference_date_basis", "VARCHAR"),
-    ("hims_eligibility_cutoff_date", "DATE"),
-    ("project_status", "VARCHAR"),
-    ("development_type", "VARCHAR"),
-    ("agreement_type", "VARCHAR"),
-    ("original_construction_period", "VARCHAR"),
-    ("expected_vp_date", "DATE"),
-    ("vp_period_amended", "VARCHAR"),
-    ("approved_extension_period", "VARCHAR"),
-    ("revised_construction_period", "VARCHAR"),
-    ("revised_vp_date", "DATE"),
-    ("ccc_obtained", "VARCHAR"),
-    ("ccc_date", "DATE"),
-    ("vp_date", "DATE"),
-    ("reported_total_units", "BIGINT"),
-    ("unit_records_count", "BIGINT"),
-    ("priced_unit_records_count", "BIGINT"),
-    ("sold_units", "BIGINT"),
-    ("unsold_units", "BIGINT"),
-    ("comparable_total_units", "BIGINT"),
-    ("sales_percentage", "DOUBLE"),
-    ("construction_percentage", "DOUBLE"),
-    ("potential_listed_gdv", "DECIMAL(24,2)"),
-    ("recorded_spa_sales_value", "DECIMAL(24,2)"),
-    ("estimated_sold_value", "DECIMAL(24,2)"),
-    ("remaining_listed_value", "DECIMAL(24,2)"),
-    ("minimum_indicative_gdv", "DECIMAL(24,2)"),
-    ("maximum_indicative_gdv", "DECIMAL(24,2)"),
-    ("unit_coverage_percentage", "DOUBLE"),
-    ("listed_price_coverage_percentage", "DOUBLE"),
-    ("spa_price_coverage_percentage", "DOUBLE"),
-    ("duplicate_unit_identifiers", "BIGINT"),
-    ("construction_row_units", "BIGINT"),
-    ("construction_row_count", "BIGINT"),
-    ("gdv_confidence", "VARCHAR"),
-    ("sales_percentage_confidence", "VARCHAR"),
-    ("sales_value_confidence", "VARCHAR"),
-    ("construction_confidence", "VARCHAR"),
-    ("construction_note", "VARCHAR"),
-    ("component_sales_count", "BIGINT"),
-    ("component_sales_confidence", "VARCHAR"),
-    ("component_sales_note", "VARCHAR"),
-    ("source_url", "VARCHAR"),
-    ("source_detail_api_url", "VARCHAR"),
-    ("source_units_api_url", "VARCHAR"),
-    ("source_dataset_as_of", "DATE"),
-    ("source_dataset_as_of_method", "VARCHAR"),
-    ("retrieved_at", "VARCHAR"),
-    ("transformation_version", "VARCHAR"),
-    ("construction_rows_json", "VARCHAR"),
-    ("component_sales_json", "VARCHAR"),
-    ("permit_history_json", "VARCHAR"),
-]
-FIELDS = [name for name, _ in FIELD_SPECS]
-
-VALIDATION_FIELDS = [
-    "selection_role",
-    "source_project_id",
-    "project_name",
-    "developer_id",
-    "developer_name",
-    "developer_status",
-    "developer_license_end_date",
-    "snapshot_date",
-    "source_dataset_as_of",
-    "project_status",
-    "development_type",
-    "agreement_type",
-    "original_construction_period",
-    "first_spa_date",
-    "teduh_spa_price_min",
-    "teduh_spa_price_max",
-    "hims_project_reference_date",
-    "hims_project_reference_date_basis",
-    "hims_eligibility_cutoff_date",
-    "reported_total_units",
-    "unit_records_count",
-    "sold_units",
-    "unsold_units",
-    "sales_percentage",
-    "construction_percentage",
-    "potential_listed_gdv",
-    "recorded_spa_sales_value",
-    "estimated_sold_value",
-    "remaining_listed_value",
-    "unit_coverage_percentage",
-    "listed_price_coverage_percentage",
-    "spa_price_coverage_percentage",
-    "gdv_confidence",
-    "sales_percentage_confidence",
-    "sales_value_confidence",
-    "construction_confidence",
-    "permit_number",
-    "permit_start_date",
-    "permit_end_date",
-    "expected_vp_date",
-    "vp_period_amended",
-    "approved_extension_period",
-    "revised_construction_period",
-    "revised_vp_date",
-    "ccc_obtained",
-    "ccc_date",
-    "vp_date",
-    "component_sales_count",
-    "component_sales_confidence",
-    "source_url",
-    "source_detail_api_url",
-    "source_units_api_url",
-    "comparison_notes",
-]
-
-
-def _csv_value(value: Any) -> Any:
-    if value is None:
-        return ""
-    if isinstance(value, Decimal):
-        return format(value, "f")
-    return value
-
-
-def _write_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> None:
-    with path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({field: _csv_value(row.get(field)) for field in fields})
-
-
-def _write_parquet(path: Path, rows: list[dict[str, Any]]) -> None:
-    connection = duckdb.connect(":memory:")
-    try:
-        columns_sql = ", ".join(f'"{name}" {sql_type}' for name, sql_type in FIELD_SPECS)
-        connection.execute(f"CREATE TABLE metrics ({columns_sql})")
-        placeholders = ",".join("?" for _ in FIELDS)
-        connection.executemany(
-            f"INSERT INTO metrics VALUES ({placeholders})",
-            [[row.get(field) for field in FIELDS] for row in rows],
-        )
-        escaped = str(path.resolve()).replace("'", "''")
-        connection.execute(f"COPY metrics TO '{escaped}' (FORMAT PARQUET, COMPRESSION ZSTD)")
-        count = connection.execute("SELECT COUNT(*) FROM metrics").fetchone()[0]
-        if count != len(rows):
-            raise RuntimeError(f"Parquet staging row count {count} does not match {len(rows)}")
-    finally:
-        connection.close()
 
 
 def _comparison_notes(record: dict[str, Any]) -> str:
@@ -354,7 +178,7 @@ def validation_report(validation_rows: list[dict[str, Any]]) -> str:
                 sold=row.get("sold_units"),
                 sales=f"{row['sales_percentage']:.4f}%" if row.get("sales_percentage") is not None else "-",
                 construction=f"{row['construction_percentage']:.2f}%" if row.get("construction_percentage") is not None else "-",
-                gdv=_csv_value(row.get("potential_listed_gdv")) or "-",
+                gdv=csv_value(row.get("potential_listed_gdv")) or "-",
             )
         )
     detail_sections = []
@@ -412,9 +236,9 @@ def export_outputs(
     staged_quality = staging / "DATA_QUALITY_REPORT.md"
     staged_validation_report = staging / "VALIDATION_REPORT.md"
     try:
-        _write_csv(staged_metrics_csv, records, FIELDS)
-        _write_parquet(staged_metrics_parquet, records)
-        _write_csv(staged_validation, validation_rows, VALIDATION_FIELDS)
+        write_csv(staged_metrics_csv, records, FIELDS)
+        write_parquet(staged_metrics_parquet, records, FIELD_SPECS)
+        write_csv(staged_validation, validation_rows, VALIDATION_FIELDS)
         staged_quality.write_text(
             data_quality_report(
                 records,
@@ -432,9 +256,7 @@ def export_outputs(
             csv_count = sum(1 for _ in csv.DictReader(handle))
         with staged_validation.open("r", encoding="utf-8-sig", newline="") as handle:
             validation_count = sum(1 for _ in csv.DictReader(handle))
-        parquet_count = duckdb.connect(":memory:").execute(
-            "SELECT COUNT(*) FROM read_parquet(?)", [str(staged_metrics_parquet)]
-        ).fetchone()[0]
+        parquet_count = parquet_row_count(staged_metrics_parquet)
         if csv_count != len(records) or parquet_count != len(records):
             raise RuntimeError("CSV/Parquet verification count mismatch")
         if validation_count != 5:

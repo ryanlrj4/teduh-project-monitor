@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import os
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable
@@ -11,6 +9,7 @@ from .export import export_outputs
 from .metrics import calculate_project_metrics
 from .normalize import is_hims_eligible
 from .sources import SourceAnomaly, TeduhClient, fetch_project_catalog
+from .storage import atomic_write_json, read_json
 from .validate import require_no_errors, select_exactly_five, validate_records
 
 
@@ -18,16 +17,12 @@ Progress = Callable[[str], None]
 
 
 def _read_previous_manifest(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    payload = read_json(path, None, tolerate_invalid=False)
+    return payload if isinstance(payload, dict) else None
 
 
 def _write_manifest(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    os.replace(temporary, path)
+    atomic_write_json(path, payload, ensure_ascii=True)
 
 
 def run_pipeline(

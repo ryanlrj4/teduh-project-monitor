@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from .config import Settings
+from .storage import atomic_write_json, read_json
 
 
 MAX_REFRESH_HISTORY = 10
@@ -25,33 +24,13 @@ def _now() -> datetime:
     return datetime.now().astimezone()
 
 
-def _read_json(path: Path, default: Any) -> Any:
-    if not path.exists():
-        return default
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        return default
-
-
-def _atomic_json(path: Path, payload: Any) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    os.replace(temporary, path)
-    return path
-
-
 def load_refresh_status(settings: Settings) -> dict[str, Any]:
-    payload = _read_json(refresh_status_path(settings), {})
+    payload = read_json(refresh_status_path(settings), {})
     return payload if isinstance(payload, dict) else {}
 
 
 def load_refresh_history(settings: Settings) -> list[dict[str, Any]]:
-    payload = _read_json(refresh_history_path(settings), [])
+    payload = read_json(refresh_history_path(settings), [])
     if not isinstance(payload, list):
         return []
     return [row for row in payload if isinstance(row, dict)]
@@ -86,7 +65,7 @@ def start_refresh(settings: Settings, *, trigger: str, total_projects: int) -> d
             "last_successful_source_dataset_as_of"
         ),
     }
-    _atomic_json(refresh_status_path(settings), status)
+    atomic_write_json(refresh_status_path(settings), status)
     return status
 
 
@@ -109,7 +88,7 @@ def update_refresh(
             "current_project_code": current_project_code,
         }
     )
-    _atomic_json(refresh_status_path(settings), status)
+    atomic_write_json(refresh_status_path(settings), status)
     return status
 
 
@@ -123,10 +102,10 @@ def _complete_run(settings: Settings, status: dict[str, Any]) -> dict[str, Any]:
     status["completed_at"] = completed.isoformat(timespec="seconds")
     status["duration_seconds"] = round(duration, 3) if duration is not None else None
     status["current_project_code"] = None
-    _atomic_json(refresh_status_path(settings), status)
+    atomic_write_json(refresh_status_path(settings), status)
     history = load_refresh_history(settings)
     history.insert(0, dict(status))
-    _atomic_json(refresh_history_path(settings), history[:MAX_REFRESH_HISTORY])
+    atomic_write_json(refresh_history_path(settings), history[:MAX_REFRESH_HISTORY])
     return status
 
 

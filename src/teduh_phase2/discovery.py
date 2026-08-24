@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import csv
-import json
-import os
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable
@@ -10,6 +7,7 @@ from typing import Any, Callable
 from .config import DEFAULT_REGION, REGION_CONFIGS, Settings
 from .sources import TeduhClient, fetch_project_catalog
 from .shortlist import load_shortlist
+from .storage import atomic_write_csv, atomic_write_json, read_csv, read_json
 
 
 Progress = Callable[[str], None]
@@ -43,28 +41,7 @@ def discovery_manifest_path(settings: Settings, region: str = DEFAULT_REGION) ->
 def load_discovery_catalog(
     settings: Settings, region: str = DEFAULT_REGION
 ) -> list[dict[str, str]]:
-    path = discovery_catalog_path(settings, region)
-    if not path.exists():
-        return []
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        return list(csv.DictReader(handle))
-
-
-def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    os.replace(temporary, path)
-
-
-def _atomic_csv(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=DISCOVERY_FIELDS, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(rows)
-    os.replace(temporary, path)
+    return read_csv(discovery_catalog_path(settings, region))
 
 
 def run_discovery(
@@ -81,7 +58,7 @@ def run_discovery(
     manifest_path = discovery_manifest_path(settings, region)
     catalog_path = discovery_catalog_path(settings, region)
     if manifest_path.exists() and catalog_path.exists():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = read_json(manifest_path, {}, tolerate_invalid=False)
         if manifest.get("discovery_date") == today:
             rows = load_discovery_catalog(settings, region)
             progress(f"{region} Discovery already ran today; reused the cached catalogue.")
@@ -123,8 +100,8 @@ def run_discovery(
             }
         )
     rows.sort(key=lambda row: (str(row["registry_name"]).casefold(), row["source_project_id"]))
-    _atomic_csv(catalog_path, rows)
-    _atomic_json(
+    atomic_write_csv(catalog_path, rows, DISCOVERY_FIELDS)
+    atomic_write_json(
         manifest_path,
         {
             "discovery_date": today,
@@ -133,6 +110,7 @@ def run_discovery(
             "status_counts": counts,
             "path": str(catalog_path),
         },
+        ensure_ascii=True,
     )
     progress(f"Discovery completed with {len(rows)} {region} catalogue projects.")
     return {

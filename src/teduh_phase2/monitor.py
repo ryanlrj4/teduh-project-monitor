@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-import csv
-import os
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable
 
-import duckdb
-
 from .config import REGION_CONFIGS, Settings
-from .export import FIELD_SPECS, FIELDS
 from .metrics import calculate_project_metrics
 from .normalize import is_hims_eligible, normalize_state
 from .refresh_status import (
@@ -23,38 +18,12 @@ from .refresh_status import (
 from .sources import SourceAnomaly, TeduhClient
 from .validate import require_no_errors, validate_records
 from .shortlist import load_shortlist
+from .schema import ALERT_FIELDS, SHORTLIST_FIELD_SPECS, SHORTLIST_FIELDS
+from .storage import atomic_write_csv, atomic_write_parquet, read_csv
 
 
 Progress = Callable[[str], None]
 ProjectProgress = Callable[[int, int, str, bool], None]
-MANUAL_FIELD_SPECS: list[tuple[str, str]] = [
-    ("region", "VARCHAR"),
-    ("display_name", "VARCHAR"),
-    ("parent_group", "VARCHAR"),
-    ("project_set", "VARCHAR"),
-    ("manual_launch_date", "DATE"),
-    ("manual_built_up_min_sqft", "DECIMAL(16,2)"),
-    ("manual_built_up_max_sqft", "DECIMAL(16,2)"),
-    ("manual_psf_min", "DECIMAL(16,2)"),
-    ("manual_psf_max", "DECIMAL(16,2)"),
-    ("tracking_notes", "VARCHAR"),
-    ("shortlist_active", "VARCHAR"),
-    ("shortlist_origin", "VARCHAR"),
-    ("project_scale_band", "VARCHAR"),
-    ("commercial_scope", "VARCHAR"),
-    ("commercial_scope_reason", "VARCHAR"),
-]
-SHORTLIST_FIELD_SPECS = MANUAL_FIELD_SPECS + FIELD_SPECS
-SHORTLIST_FIELDS = [name for name, _ in SHORTLIST_FIELD_SPECS]
-ALERT_FIELDS = [
-    "snapshot_date",
-    "region",
-    "severity",
-    "alert_code",
-    "source_project_id",
-    "display_name",
-    "message",
-]
 VALIDATION_CODES = [
     ("active_data_rich", "30031-1"),
     ("active_mid_sales", "30513-1"),
@@ -111,59 +80,8 @@ def project_scale(gdv: Any, confidence: str | None) -> tuple[str, str, str]:
     return "RM1bn+", "Include", "Major project GDV"
 
 
-def _csv_value(value: Any) -> Any:
-    if value is None:
-        return ""
-    if isinstance(value, Decimal):
-        return format(value, "f")
-    return value
-
-
-def _atomic_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({field: _csv_value(row.get(field)) for field in fields})
-    os.replace(temporary, path)
-
-
-def _typed_parquet(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    connection = duckdb.connect(":memory:")
-    try:
-        columns_sql = ", ".join(f'"{name}" {sql_type}' for name, sql_type in SHORTLIST_FIELD_SPECS)
-        connection.execute(f"CREATE TABLE metrics ({columns_sql})")
-        placeholders = ",".join("?" for _ in SHORTLIST_FIELDS)
-        connection.executemany(
-            f"INSERT INTO metrics VALUES ({placeholders})",
-            [
-                [
-                    None if row.get(field) in (None, "") else row.get(field)
-                    for field in SHORTLIST_FIELDS
-                ]
-                for row in rows
-            ],
-        )
-        escaped = str(temporary.resolve()).replace("'", "''")
-        connection.execute(f"COPY metrics TO '{escaped}' (FORMAT PARQUET, COMPRESSION ZSTD)")
-    finally:
-        connection.close()
-    os.replace(temporary, path)
-
-
-def _read_csv(path: Path) -> list[dict[str, str]]:
-    if not path.exists():
-        return []
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        return list(csv.DictReader(handle))
-
-
 def _merge_history(settings: Settings, current: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    history = _read_csv(history_csv_path(settings))
+    history = read_csv(history_csv_path(settings))
     current_keys = {(str(row["snapshot_date"]), str(row["source_project_id"])) for row in current}
     retained = [
         row
@@ -172,8 +90,13 @@ def _merge_history(settings: Settings, current: list[dict[str, Any]]) -> list[di
     ]
     merged: list[dict[str, Any]] = retained + current
     merged.sort(key=lambda row: (str(row.get("snapshot_date")), str(row.get("source_project_id"))))
-    _atomic_csv(history_csv_path(settings), merged, SHORTLIST_FIELDS)
-    _typed_parquet(history_parquet_path(settings), merged)
+    atomic_write_csv(history_csv_path(settings), merged, SHORTLIST_FIELDS)
+    atomic_write_parquet(
+        history_parquet_path(settings),
+        merged,
+        SHORTLIST_FIELD_SPECS,
+        blank_as_none=True,
+    )
     return merged
 
 
@@ -354,13 +277,22 @@ def _snapshot_shortlist(
             str(row.get("source_project_id")),
         )
     )
-    _atomic_csv(current_metrics_path(settings), records, SHORTLIST_FIELDS)
-    _typed_parquet(current_parquet_path(settings), records)
+    atomic_write_csv(current_metrics_path(settings), records, SHORTLIST_FIELDS)
+    atomic_write_parquet(
+        current_parquet_path(settings),
+        records,
+        SHORTLIST_FIELD_SPECS,
+        blank_as_none=True,
+    )
     history = _merge_history(settings, records)
     alerts = build_alerts(history)
-    _atomic_csv(alerts_path(settings), alerts, ALERT_FIELDS)
+    atomic_write_csv(alerts_path(settings), alerts, ALERT_FIELDS)
     validation = _validation_rows(records)
-    _atomic_csv(validation_path(settings), validation, ["selection_role"] + SHORTLIST_FIELDS)
+    atomic_write_csv(
+        validation_path(settings),
+        validation,
+        ["selection_role"] + SHORTLIST_FIELDS,
+    )
     progress("Shortlist snapshot, history, alerts, and exactly five validation rows were verified.")
     return {
         "snapshot_date": today,

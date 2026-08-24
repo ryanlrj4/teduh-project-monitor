@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,6 +10,7 @@ from typing import Any
 import httpx
 
 from .config import BASE_URL, STATE_ID, TARGET_STATUSES, USER_AGENT, Settings
+from .storage import atomic_write_bytes
 
 
 class SourceAnomaly(RuntimeError):
@@ -66,13 +66,6 @@ class TeduhClient:
         body = self.settings.raw_dir / "teduh" / self.snapshot_date / relative
         meta = body.with_suffix(body.suffix + ".metadata.json")
         return body, meta
-
-    @staticmethod
-    def _atomic_write(path: Path, data: bytes) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(path.name + ".tmp")
-        temporary.write_bytes(data)
-        os.replace(temporary, path)
 
     @staticmethod
     def _validate_payload(payload: Any, expected_keys: tuple[str, ...], url: str) -> None:
@@ -146,8 +139,8 @@ class TeduhClient:
                     "http_status": response.status_code,
                     "content_type": content_type,
                 }
-                self._atomic_write(body_path, response.content)
-                self._atomic_write(
+                atomic_write_bytes(body_path, response.content)
+                atomic_write_bytes(
                     meta_path,
                     json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"),
                 )
