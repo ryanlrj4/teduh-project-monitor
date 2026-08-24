@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from teduh_phase2.presentation import (
+from teduh_monitor.presentation import (
     latest_project_changes,
     present_alert,
     translate_teduh_text,

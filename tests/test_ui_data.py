@@ -1,6 +1,6 @@
 import json
 
-from teduh_phase2.ui.data import apply_shortlist_metadata, dataframe
+from teduh_monitor.ui.data import apply_shortlist_metadata, dataframe
 
 
 def test_apply_shortlist_metadata_overlays_local_fields_without_mutating_source() -> None:

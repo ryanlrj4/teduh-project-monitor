@@ -1,4 +1,5 @@
-from teduh_phase2.ui.formatting import (
+from teduh_monitor.ui.formatting import (
+    display_date,
     display_duration,
     json_rows,
     money,
@@ -23,3 +24,9 @@ def test_json_rows_accepts_only_lists_of_objects() -> None:
     assert json_rows('[{"component": 1}, "invalid"]') == [{"component": 1}]
     assert json_rows('{"component": 1}') == []
     assert json_rows("not-json") == []
+
+
+def test_display_date_supports_api_and_teduh_display_formats() -> None:
+    assert display_date("2026-08-25") == "25 Aug 2026"
+    assert display_date("25/08/2026") == "25 Aug 2026"
+    assert display_date("not-a-date") == "N/A"

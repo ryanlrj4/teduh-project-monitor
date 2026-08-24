@@ -3,9 +3,9 @@ from __future__ import annotations
 import csv
 from datetime import date
 
-from teduh_phase2.config import Settings
-from teduh_phase2.monitor import current_metrics_path
-from teduh_phase2.schedule import refresh_if_due, week_start
+from teduh_monitor.config import Settings
+from teduh_monitor.monitor import current_metrics_path
+from teduh_monitor.schedule import refresh_if_due, week_start
 
 
 def test_week_start_uses_monday() -> None:

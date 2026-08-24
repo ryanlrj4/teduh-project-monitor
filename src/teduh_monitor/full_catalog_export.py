@@ -216,7 +216,7 @@ Open each linked TEDUH record and compare the project/developer identity, permit
 """
 
 
-def export_outputs(
+def export_full_catalog_outputs(
     settings: Settings,
     records: list[dict[str, Any]],
     selected: list[tuple[str, dict[str, Any]]],
@@ -268,9 +268,10 @@ def export_outputs(
             "metrics_csv": settings.processed_dir / "kl_project_metrics_hims_eligible.csv",
             "metrics_parquet": settings.processed_dir / "kl_project_metrics_hims_eligible.parquet",
             "validation_csv": settings.processed_dir / "kl_validation_sample_hims_eligible.csv",
-            "quality_report": settings.docs_dir / "DATA_QUALITY_REPORT.md",
-            "validation_report": settings.docs_dir / "VALIDATION_REPORT.md",
+            "quality_report": settings.docs_dir / "legacy" / "DATA_QUALITY_REPORT.md",
+            "validation_report": settings.docs_dir / "legacy" / "VALIDATION_REPORT.md",
         }
+        destinations["quality_report"].parent.mkdir(parents=True, exist_ok=True)
         os.replace(staged_metrics_csv, destinations["metrics_csv"])
         os.replace(staged_metrics_parquet, destinations["metrics_parquet"])
         os.replace(staged_validation, destinations["validation_csv"])

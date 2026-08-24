@@ -1,4 +1,5 @@
-from teduh_phase2.validate import select_exactly_five, validate_records
+from teduh_monitor.full_catalog import select_validation_sample
+from teduh_monitor.validate import validate_records
 
 
 def record(code: str, status: str, reported: int, coverage: float, sold: int = 0):
@@ -31,7 +32,7 @@ def test_exactly_five_selection() -> None:
         record("D-1", "Lewat", 400, 80),
         record("E-1", "Sakit", 500, 70),
     ]
-    selected = select_exactly_five(records)
+    selected = select_validation_sample(records)
     assert len(selected) == 5
     assert [role for role, _ in selected] == [
         "not_started",

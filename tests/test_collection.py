@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from teduh_phase2.collection import IneligibleProject, collect_project
-from teduh_phase2.sources import SourceAnomaly, SourceResult
+from teduh_monitor.collection import IneligibleProject, collect_project
+from teduh_monitor.sources import SourceAnomaly, SourceResult
 
 
 def source_result(payload, *, retrieved_at: str, from_cache: bool) -> SourceResult:

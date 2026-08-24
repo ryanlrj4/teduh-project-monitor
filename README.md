@@ -11,7 +11,7 @@ Double-click `run_dashboard.bat`.
 The dashboard opens locally in your browser. Use these tabs:
 
 - **Overview** — Reporting Set changes, current TEDUH exceptions, current metrics, and project details.
-- **All projects** — search and filter the complete project universe by name, parent group/developer, region, project set, and TEDUH status.
+- **All projects** — search and filter every tracked project by name, parent group/developer, region, project set, and TEDUH status.
 - **Shortlist** — review saved-project metadata, persistent refresh status, and run a manual TEDUH refresh.
 - **Add or edit** — add a TEDUH code or change the local display name, parent group, project set, notes, or active flag.
 - **Discovery** — create or reuse a searchable regional TEDUH catalogue. A successful live discovery is limited to once per region per local calendar day.
@@ -57,22 +57,24 @@ After that one-time setup, double-click `run_dashboard.command` to start the loc
 
 ```powershell
 # Refresh only the active shortlist
-.venv\Scripts\python -m teduh_phase2.cli snapshot-shortlist
+.venv\Scripts\python -m teduh_monitor.cli refresh
 
 # Safe command for a weekly scheduler; does nothing when this week is already current
-.venv\Scripts\python -m teduh_phase2.cli refresh-if-due
+.venv\Scripts\python -m teduh_monitor.cli refresh-if-due
 
 # Build/reuse a once-daily regional discovery catalogue
-.venv\Scripts\python -m teduh_phase2.cli discover --region "Penang"
+.venv\Scripts\python -m teduh_monitor.cli discover --region "Penang"
 
-# Verify Phase 3 outputs and exactly five validation rows
-.venv\Scripts\python -m teduh_phase2.cli validate-phase3
+# Verify the current shortlist and history outputs
+.venv\Scripts\python -m teduh_monitor.cli validate-monitor
 
 # Run fixed tests without accessing TEDUH
 .venv\Scripts\python -m pytest
 ```
 
-The older full-universe proof command remains available as `teduh_phase2.cli run`, but it is not part of normal Phase 3 monitoring.
+The older KL full-universe data proof is quarantined behind the explicit
+`legacy-kl-full-catalog` and `legacy-kl-validate` commands. Neither command is
+part of normal monitoring.
 
 ## Main files
 
@@ -83,8 +85,7 @@ The older full-universe proof command remains available as `teduh_phase2.cli run
 - Alerts: `data/processed/shortlist_alerts.csv`
 - Latest refresh status and recent-run history: ignored local JSON files in `data/processed/`
 - Project-change audit log: `data/audit/project_changes.csv` (created on the first new addition or edit)
-- Exactly five validation rows: `data/processed/shortlist_validation_sample.csv`
-- Beginner operating guide: `docs/PHASE3_GUIDE.md`
+- Operating guide: `docs/OPERATING_GUIDE.md`
 - Modernisation technical pitch: `docs/MODERNISATION_TECHNICAL_PITCH.md`
 
 ## Safety behavior

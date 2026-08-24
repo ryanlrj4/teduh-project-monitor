@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from teduh_phase2.metrics import (
+from teduh_monitor.metrics import (
     calculate_project_metrics,
     ccc_obtained,
     component_sales_summary,

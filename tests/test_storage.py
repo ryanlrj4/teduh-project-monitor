@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from teduh_phase2.storage import (
+from teduh_monitor.storage import (
     atomic_write_csv,
     atomic_write_json,
     atomic_write_parquet,

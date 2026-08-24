@@ -4,12 +4,12 @@ from pathlib import Path
 
 import streamlit as st
 
-from teduh_phase2.config import Settings, project_root
-from teduh_phase2.monitor import alerts_path, current_metrics_path, history_csv_path
-from teduh_phase2.shortlist import load_audit_log, load_shortlist
-from teduh_phase2.ui.data import apply_shortlist_metadata, dataframe, read_csv
-from teduh_phase2.ui.formatting import display_date, display_timestamp
-from teduh_phase2.ui.pages import (
+from teduh_monitor.config import Settings, project_root
+from teduh_monitor.monitor import alerts_path, current_metrics_path, history_csv_path
+from teduh_monitor.shortlist import load_audit_log, load_shortlist
+from teduh_monitor.ui.data import apply_shortlist_metadata, dataframe, read_csv
+from teduh_monitor.ui.formatting import display_date, display_timestamp
+from teduh_monitor.ui.pages import (
     render_add_or_edit,
     render_alerts,
     render_all_projects,

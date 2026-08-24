@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from teduh_phase2.normalize import (
+from teduh_monitor.normalize import (
     hims_project_reference,
     is_hims_eligible,
     normalize_sales_status,

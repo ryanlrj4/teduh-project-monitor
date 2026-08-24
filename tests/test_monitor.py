@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from teduh_phase2.monitor import build_alerts, project_scale
-from teduh_phase2.config import REGION_CONFIGS
+from teduh_monitor.monitor import build_alerts, project_scale
+from teduh_monitor.config import REGION_CONFIGS
 
 
 def test_project_scale_keeps_unknown_projects_for_review() -> None:

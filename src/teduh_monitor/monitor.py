@@ -23,13 +23,6 @@ from .storage import atomic_write_csv, atomic_write_parquet, read_csv
 
 Progress = Callable[[str], None]
 ProjectProgress = Callable[[int, int, str, bool], None]
-VALIDATION_CODES = [
-    ("active_data_rich", "30031-1"),
-    ("active_mid_sales", "30513-1"),
-    ("risk_status", "4131-139"),
-    ("completed_ccc", "19760-2"),
-    ("manual_name_parent_mapping", "31096-1"),
-]
 
 
 def current_metrics_path(settings: Settings) -> Path:
@@ -50,10 +43,6 @@ def history_parquet_path(settings: Settings) -> Path:
 
 def alerts_path(settings: Settings) -> Path:
     return settings.processed_dir / "shortlist_alerts.csv"
-
-
-def validation_path(settings: Settings) -> Path:
-    return settings.processed_dir / "shortlist_validation_sample.csv"
 
 
 def project_scale(gdv: Any, confidence: str | None) -> tuple[str, str, str]:
@@ -165,18 +154,6 @@ def build_alerts(history: list[dict[str, Any]]) -> list[dict[str, str]]:
     return alerts
 
 
-def _validation_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    by_code = {str(row.get("source_project_id")): row for row in records}
-    selected: list[dict[str, Any]] = []
-    for role, code in VALIDATION_CODES:
-        if code not in by_code:
-            raise ValueError(f"Phase 3 validation project {code} is missing from the active shortlist snapshot")
-        selected.append(dict(by_code[code], selection_role=role))
-    if len(selected) != 5 or len({row["source_project_id"] for row in selected}) != 5:
-        raise ValueError("Phase 3 validation sample must contain exactly five distinct projects")
-    return selected
-
-
 def _snapshot_shortlist(
     settings: Settings,
     *,
@@ -264,13 +241,7 @@ def _snapshot_shortlist(
     history = _merge_history(settings, records)
     alerts = build_alerts(history)
     atomic_write_csv(alerts_path(settings), alerts, ALERT_FIELDS)
-    validation = _validation_rows(records)
-    atomic_write_csv(
-        validation_path(settings),
-        validation,
-        ["selection_role"] + SHORTLIST_FIELDS,
-    )
-    progress("Shortlist snapshot, history, alerts, and exactly five validation rows were verified.")
+    progress("Shortlist snapshot, history, and alerts were validated and published.")
     return {
         "snapshot_date": today,
         "source_dataset_as_of": source_dataset_as_of,
@@ -278,14 +249,12 @@ def _snapshot_shortlist(
         "cached_project_count": cached_project_count,
         "live_project_count": live_project_count,
         "alert_count": len(alerts),
-        "validation": validation,
         "paths": {
             "current_csv": current_metrics_path(settings),
             "current_parquet": current_parquet_path(settings),
             "history_csv": history_csv_path(settings),
             "history_parquet": history_parquet_path(settings),
             "alerts_csv": alerts_path(settings),
-            "validation_csv": validation_path(settings),
         },
     }
 

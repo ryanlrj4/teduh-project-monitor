@@ -3,9 +3,9 @@ requires = ["setuptools>=75", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "teduh-kl-data-proof"
-version = "0.1.0"
-description = "Local TEDUH data-quality and metric proof for WP Kuala Lumpur private housing projects"
+name = "teduh-project-monitor"
+version = "0.2.0"
+description = "Regional monitoring dashboard for selected Malaysian TEDUH housing projects"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -18,7 +18,7 @@ dependencies = [
 dev = ["pytest>=8,<10"]
 
 [project.scripts]
-teduh-phase2 = "teduh_phase2.cli:main"
+teduh-monitor = "teduh_monitor.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -27,7 +27,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-teduh_phase2 = ["ui/*.css"]
+teduh_monitor = ["ui/*.css"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

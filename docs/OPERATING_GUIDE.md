@@ -1,8 +1,8 @@
-# Phase 3 Operating Guide
+# TEDUH Project Monitor Operating Guide
 
-## What Phase 3 does
+## What the monitor does
 
-Phase 3 changes the proof into a focused local monitor:
+The application is a focused local monitor:
 
 1. Start with the authorized Kuala Lumpur comparison set and selected reporting-set projects in other regions.
 2. Refresh only projects marked active.

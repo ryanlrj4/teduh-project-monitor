@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from teduh_phase2.config import Settings
-from teduh_phase2.refresh_status import (
+from teduh_monitor.config import Settings
+from teduh_monitor.refresh_status import (
     complete_refresh_failure,
     complete_refresh_success,
     load_refresh_history,

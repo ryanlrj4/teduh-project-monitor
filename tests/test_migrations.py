@@ -2,7 +2,7 @@ import json
 
 import pandas as pd
 
-from teduh_phase2.migrations import backfill_legacy_completion_dates
+from teduh_monitor.migrations import backfill_legacy_completion_dates
 
 
 def test_legacy_completion_backfill_preserves_existing_values() -> None:

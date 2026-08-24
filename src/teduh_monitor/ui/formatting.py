@@ -62,7 +62,10 @@ def pct(value: float | int | None) -> str:
 def display_date(value: object) -> str:
     if value in (None, "") or pd.isna(value):
         return "N/A"
-    parsed = pd.to_datetime(value, errors="coerce")
+    text = str(value).strip()
+    parsed = pd.to_datetime(text, format="%Y-%m-%d", errors="coerce")
+    if pd.isna(parsed):
+        parsed = pd.to_datetime(text, format="%d/%m/%Y", errors="coerce")
     return "N/A" if pd.isna(parsed) else parsed.strftime("%d %b %Y")
 
 

@@ -6,14 +6,14 @@ from datetime import date
 
 import pytest
 
-from teduh_phase2.config import Settings
-from teduh_phase2.discovery import (
+from teduh_monitor.config import Settings
+from teduh_monitor.discovery import (
     DISCOVERY_FIELDS,
     discovery_catalog_path,
     discovery_manifest_path,
     run_discovery,
 )
-from teduh_phase2.shortlist import load_audit_log, load_shortlist, upsert_shortlist_project
+from teduh_monitor.shortlist import load_audit_log, load_shortlist, upsert_shortlist_project
 
 
 def test_shortlist_preserves_manual_name_and_parent_mapping(tmp_path) -> None:

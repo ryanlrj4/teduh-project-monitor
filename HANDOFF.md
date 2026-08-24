@@ -31,7 +31,7 @@ state.
 4. Run `python -m pytest -q` and report the result.
 5. Make `run_dashboard.command` executable if required.
 6. Start the dashboard through `run_dashboard.command` or the equivalent
-   `.venv/bin/python -m streamlit run src/teduh_phase2/app.py` command.
+   `.venv/bin/python -m streamlit run src/teduh_monitor/app.py` command.
 7. Confirm that `http://localhost:8501` loads.
 8. Do not run Discovery or contact TEDUH during setup unless the user explicitly
    requests fresh data. The checked-in CSV snapshot should make the dashboard
@@ -49,19 +49,17 @@ state.
 - The Shortlist tab persists the latest refresh outcome and recent run history.
 - Pinnacle Bukit Gambier has a locally entered built-up range of
   `1,080–1,726 sqft`.
-- The latest macOS verification passed 41 tests. The checked-in data contains
-  50 current projects, 100 unique dated observations, and exactly five Phase 3
-  validation rows.
+- Run the complete automated suite after setup. The checked-in data contains
+  50 current projects and dated observations for offline dashboard use.
 
 ## Files that must remain preserved
 
 - `config/shortlist.csv`: editable shortlist and local fields.
 - `data/processed/shortlist_current.csv`: current dashboard snapshot.
 - `data/processed/shortlist_alerts.csv`: current alerts.
-- `data/processed/shortlist_validation_sample.csv`: five validation projects.
 - `data/history/shortlist_history.csv`: dated observations used for trends.
 
-The ignored raw downloads, Parquet files, legacy full-universe proof outputs,
+The ignored raw downloads, Parquet files, optional legacy KL proof outputs,
 virtual environment, and temporary PDFs can all be regenerated. They are not
 required to open the current dashboard.
 
