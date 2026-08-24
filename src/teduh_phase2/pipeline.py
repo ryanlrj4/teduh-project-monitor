@@ -4,10 +4,9 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
+from .collection import IneligibleProject, collect_project
 from .config import HIMS_UNIT_DATA_START_ISO, Settings, TARGET_STATUSES
 from .export import export_outputs
-from .metrics import calculate_project_metrics
-from .normalize import is_hims_eligible
 from .sources import SourceAnomaly, TeduhClient, fetch_project_catalog
 from .storage import atomic_write_json, read_json
 from .validate import require_no_errors, select_exactly_five, validate_records
@@ -78,46 +77,26 @@ def run_pipeline(
         failed_units = 0
         for index, search_project in enumerate(catalog, start=1):
             project_code = str(search_project["id"])
-            detail_payload: dict[str, Any] | None = None
-            units_payload: dict[str, Any] | None = None
-            retrieved_at = date.today().isoformat()
             try:
-                detail_result = client.project_detail(project_code)
-                detail_payload = detail_result.payload
-                retrieved_at = detail_result.retrieved_at
+                collected = collect_project(
+                    client,
+                    project_code=project_code,
+                    search_project=search_project,
+                    city_lookup=city_lookup,
+                    snapshot_date=snapshot_date,
+                    source_dataset_as_of=source_dataset_as_of,
+                    allow_missing_units=True,
+                )
+            except IneligibleProject:
+                excluded_legacy_projects += 1
             except SourceAnomaly as exc:
                 failed_details += 1
                 anomalies.append(f"{project_code} detail: {exc}")
-            if detail_payload is None:
-                if index == 1 or index % 10 == 0 or index == total:
-                    progress(f"Reviewed {index}/{total} catalog projects (latest: {project_code}).")
-                continue
-
-            project = detail_payload.get("projek") or {}
-            pjb = detail_payload.get("pjb") or {}
-            if not is_hims_eligible(pjb.get("tarikhPjbPertama"), project.get("permitMula")):
-                excluded_legacy_projects += 1
-                if index == 1 or index % 10 == 0 or index == total:
-                    progress(f"Reviewed {index}/{total} catalog projects (latest: {project_code}).")
-                continue
-
-            try:
-                unit_result = client.project_units(project_code)
-                units_payload = unit_result.payload
-                retrieved_at = max(retrieved_at, unit_result.retrieved_at)
-            except SourceAnomaly as exc:
-                failed_units += 1
-                anomalies.append(f"{project_code} units: {exc}")
-            record = calculate_project_metrics(
-                search_project=search_project,
-                detail=detail_payload,
-                units_payload=units_payload,
-                city_lookup=city_lookup,
-                snapshot_date=snapshot_date,
-                source_dataset_as_of=source_dataset_as_of,
-                retrieved_at=retrieved_at,
-            )
-            records.append(record)
+            else:
+                if collected.unit_error is not None:
+                    failed_units += 1
+                    anomalies.append(f"{project_code} units: {collected.unit_error}")
+                records.append(collected.record)
             if index == 1 or index % 10 == 0 or index == total:
                 progress(f"Reviewed {index}/{total} catalog projects (latest: {project_code}).")
 

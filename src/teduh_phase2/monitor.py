@@ -6,9 +6,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable
 
+from .collection import collect_project
 from .config import REGION_CONFIGS, Settings
-from .metrics import calculate_project_metrics
-from .normalize import is_hims_eligible, normalize_state
 from .refresh_status import (
     complete_refresh_failure,
     complete_refresh_success,
@@ -199,38 +198,16 @@ def _snapshot_shortlist(
             code = tracked["source_project_id"]
             project_succeeded = False
             try:
-                detail_result = client.project_detail(code)
-                detail = detail_result.payload
-                project = detail.get("projek") or {}
-                pjb = detail.get("pjb") or {}
                 expected_state = str(REGION_CONFIGS[tracked["region"]]["state_label"])
-                observed_state = normalize_state(project.get("negeri"))
-                if observed_state != expected_state:
-                    raise SourceAnomaly(
-                        f"{code} is registered in {observed_state or 'an unknown state'}, "
-                        f"not the selected {tracked['region']} region"
-                    )
-                if not is_hims_eligible(pjb.get("tarikhPjbPertama"), project.get("permitMula")):
-                    raise SourceAnomaly(f"{code} predates comparable HIMS coverage")
-                unit_result = client.project_units(code)
-                developer = detail.get("pemaju") or {}
-                status = detail.get("status") or {}
-                search_project = {
-                    "id": code,
-                    "nama": detail.get("nama") or project.get("nama"),
-                    "kod_pemaju": developer.get("kod_pemaju"),
-                    "latest_lesen": developer.get("latest_lesen") or {},
-                    "status_project": {"keterangan": status.get("keseluruhan")},
-                }
-                record = calculate_project_metrics(
-                    search_project=search_project,
-                    detail=detail,
-                    units_payload=unit_result.payload,
-                    city_lookup={},
+                collected = collect_project(
+                    client,
+                    project_code=code,
                     snapshot_date=today,
                     source_dataset_as_of=source_dataset_as_of,
-                    retrieved_at=max(detail_result.retrieved_at, unit_result.retrieved_at),
+                    expected_state=expected_state,
+                    expected_region=tracked["region"],
                 )
+                record = collected.record
                 scale_band, commercial_scope, scope_reason = project_scale(
                     record.get("potential_listed_gdv"), str(record.get("gdv_confidence") or "")
                 )
@@ -255,7 +232,7 @@ def _snapshot_shortlist(
                 )
                 records.append(record)
                 project_succeeded = True
-                if detail_result.from_cache and unit_result.from_cache:
+                if collected.detail_from_cache and collected.units_from_cache:
                     cached_project_count += 1
                 else:
                     live_project_count += 1
