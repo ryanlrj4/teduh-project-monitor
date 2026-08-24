@@ -12,7 +12,6 @@ Progress = Callable[[str], None]
 
 
 def week_start(day: date) -> date:
-    """Return the Monday for the week containing ``day``."""
     return day - timedelta(days=day.weekday())
 
 

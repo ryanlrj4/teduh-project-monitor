@@ -66,7 +66,6 @@ def _changed(previous: object, current: object) -> bool:
 
 
 def latest_project_changes(current: pd.DataFrame, history: pd.DataFrame) -> pd.DataFrame:
-    """Return projects whose latest snapshot differs from their prior dated observation."""
     columns = [
         "source_project_id",
         "display_name",

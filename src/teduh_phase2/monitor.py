@@ -388,7 +388,6 @@ def snapshot_shortlist(
     project_progress: ProjectProgress | None = None,
     trigger: str = "manual",
 ) -> dict[str, Any]:
-    """Run and persist the status of a validated shortlist refresh."""
     total_projects = len(load_shortlist(settings, active_only=True))
     start_refresh(settings, trigger=trigger, total_projects=total_projects)
     successful_projects = 0

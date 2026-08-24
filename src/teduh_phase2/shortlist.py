@@ -273,7 +273,3 @@ def upsert_shortlist_project(
         _audit_events(existing=previous, updated=normalized, changed_by=changed_by),
     )
     return path
-
-
-def shortlist_by_code(settings: Settings) -> dict[str, dict[str, str]]:
-    return {row["source_project_id"]: row for row in load_shortlist(settings)}

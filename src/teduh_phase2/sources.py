@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
 
 import httpx
 
@@ -247,7 +246,3 @@ def fetch_project_catalog(
             f"{client.settings.minimum_expected_projects}"
         )
     return list(projects_by_id.values()), counts
-
-
-def encoded_url(path: str, params: dict[str, Any]) -> str:
-    return f"{BASE_URL}{path}?{urlencode(params)}"

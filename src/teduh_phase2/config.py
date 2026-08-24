@@ -8,7 +8,6 @@ from pathlib import Path
 BASE_URL = "https://teduh.kpkt.gov.my"
 SEARCH_PAGE_URL = f"{BASE_URL}/semakan-status-kemajuan"
 STATE_ID = "14"
-STATE_LABEL = "Wp Kuala Lumpur"
 DEFAULT_REGION = "Kuala Lumpur"
 REGION_CONFIGS = {
     "Kuala Lumpur": {
