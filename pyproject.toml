@@ -26,6 +26,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+teduh_phase2 = ["ui/*.css"]
+
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]

@@ -1,0 +1,191 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+    --ocbc-red: #E30613;
+    --ocbc-red-dark: #C9000B;
+    --ocbc-white: #FFFFFF;
+    --ocbc-charcoal: #363B40;
+    --ocbc-muted: #666B70;
+    --ocbc-surface: #F6F6F6;
+    --ocbc-border: #DEDEDE;
+}
+
+html, body, [class*="st-"], [data-testid="stAppViewContainer"] {
+    font-family: "Open Sans", OpenSans, Helvetica, Arial, sans-serif;
+    color: var(--ocbc-charcoal);
+}
+[data-testid="stIconMaterial"], .material-symbols-rounded {
+    font-family: "Material Symbols Rounded" !important;
+}
+[data-testid="stAppViewContainer"], [data-testid="stMain"] {
+    background: var(--ocbc-white);
+}
+[data-testid="stHeader"] {
+    background: rgba(255,255,255,.96);
+    border-bottom: 1px solid #EEEEEE;
+}
+.block-container {padding-top: 1.6rem; padding-bottom: 3rem;}
+h1, h2, h3, h4, h5, h6 {
+    color: var(--ocbc-charcoal);
+    font-family: "Open Sans", OpenSans, Helvetica, Arial, sans-serif;
+    letter-spacing: -.015em;
+}
+p, label, [data-testid="stCaptionContainer"] {color: var(--ocbc-charcoal);}
+a {color: var(--ocbc-red);}
+
+[data-testid="stMetric"] {
+    background: var(--ocbc-white);
+    border: 1px solid var(--ocbc-border);
+    border-top: 4px solid var(--ocbc-red);
+    border-radius: 5px;
+    padding: 14px;
+    box-shadow: 0 1px 3px rgba(54,59,64,.06);
+}
+[data-testid="stMetricLabel"] {color: var(--ocbc-muted) !important;font-weight:600;}
+[data-testid="stMetricValue"] {color: var(--ocbc-charcoal) !important;font-weight:600;}
+.st-key-project_detail_panel [data-testid="stMetric"],
+.st-key-all_projects_detail_panel [data-testid="stMetric"] {
+    border-top-width: 2px;
+    padding: 10px 12px;
+    min-height: 0;
+}
+.st-key-project_detail_panel [data-testid="stMetricLabel"] p,
+.st-key-all_projects_detail_panel [data-testid="stMetricLabel"] p {
+    font-size: .78rem !important;
+    line-height: 1.2 !important;
+}
+.st-key-project_detail_panel [data-testid="stMetricValue"],
+.st-key-all_projects_detail_panel [data-testid="stMetricValue"] {
+    font-size: clamp(.9rem, 1.15vw, 1.05rem) !important;
+    line-height: 1.25 !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+}
+.st-key-project_detail_panel [data-testid="stMetricValue"] > div,
+.st-key-all_projects_detail_panel [data-testid="stMetricValue"] > div,
+.st-key-project_detail_panel [data-testid="stMetricValue"] p,
+.st-key-all_projects_detail_panel [data-testid="stMetricValue"] p {
+    font-size: inherit !important;
+    line-height: inherit !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+}
+.st-key-manual_project_details,
+.st-key-all_projects_manual_project_details {
+    background: var(--ocbc-surface);
+    border-left: 4px solid var(--ocbc-muted);
+    border-radius: 5px;
+    padding: .75rem 1rem .4rem;
+    margin: .65rem 0 1rem;
+}
+.st-key-manual_project_details [data-testid="stMetric"],
+.st-key-all_projects_manual_project_details [data-testid="stMetric"] {
+    background: var(--ocbc-white);
+    border-top-color: var(--ocbc-muted);
+}
+
+div.stButton button, div.stDownloadButton button, [data-testid="stFormSubmitButton"] button {
+    min-height: 2.7rem;
+    border: 1px solid var(--ocbc-red);
+    border-radius: 5px !important;
+    color: var(--ocbc-red);
+    background: var(--ocbc-white);
+    font-family: "Open Sans", OpenSans, Helvetica, Arial, sans-serif;
+    font-weight: 600;
+}
+div.stButton button p, div.stDownloadButton button p, [data-testid="stFormSubmitButton"] button p {
+    color: inherit;
+    font-weight: 600;
+}
+div.stButton button:hover, div.stDownloadButton button:hover, [data-testid="stFormSubmitButton"] button:hover {
+    border-color: var(--ocbc-red-dark);
+    color: var(--ocbc-red-dark);
+    background: #FFF5F5;
+}
+div.stButton button[kind="primary"],
+[data-testid="stFormSubmitButton"] button[kind="primary"] {
+    color: var(--ocbc-white) !important;
+    background: var(--ocbc-red) !important;
+    border-color: var(--ocbc-red) !important;
+}
+div.stButton button[kind="primary"] p,
+[data-testid="stFormSubmitButton"] button[kind="primary"] p {
+    color: var(--ocbc-white) !important;
+}
+div.stButton button[kind="primary"]:hover,
+[data-testid="stFormSubmitButton"] button[kind="primary"]:hover {
+    color: var(--ocbc-white) !important;
+    background: var(--ocbc-red-dark) !important;
+    border-color: var(--ocbc-red-dark) !important;
+}
+
+[data-baseweb="tab-list"] {
+    border-bottom: 1px solid var(--ocbc-border);
+    gap: .5rem;
+}
+[data-baseweb="tab"] {
+    color: var(--ocbc-muted);
+    font-family: "Open Sans", OpenSans, Helvetica, Arial, sans-serif;
+    font-weight: 600;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+[data-baseweb="tab"] p {color: inherit;font-weight:600;}
+[data-baseweb="tab"][aria-selected="true"] {color: var(--ocbc-red);}
+
+[data-baseweb="input"], [data-baseweb="select"] > div,
+[data-testid="stTextArea"] textarea, [data-testid="stNumberInput"] input {
+    border-color: var(--ocbc-border);
+    border-radius: 5px;
+    background: var(--ocbc-white);
+}
+[data-baseweb="input"]:focus-within, [data-baseweb="select"] > div:focus-within,
+[data-testid="stTextArea"] textarea:focus, [data-testid="stNumberInput"] input:focus {
+    border-color: var(--ocbc-red);
+    box-shadow: 0 0 0 1px var(--ocbc-red);
+}
+[data-testid="stDataFrame"] {
+    border: 1px solid var(--ocbc-border);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.app-kicker {
+    color: var(--ocbc-red);
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+}
+.app-title {
+    color: var(--ocbc-charcoal);
+    font-size: 2.15rem;
+    font-weight: 600;
+    line-height: 1.2;
+    margin: .3rem 0 1rem;
+    border-left: 6px solid var(--ocbc-red);
+    padding-left: .8rem;
+}
+.source-note {
+    background: #FFF5F5;
+    border-left: 4px solid var(--ocbc-red);
+    padding: .7rem .9rem;
+    border-radius: 5px;
+    color: var(--ocbc-charcoal);
+}
+.creator-footer {
+    border-top: 1px solid var(--ocbc-border);
+    color: var(--ocbc-muted);
+    font-size: .72rem;
+    margin-top: 2.5rem;
+    padding-top: .75rem;
+    text-align: right;
+}
+</style>
