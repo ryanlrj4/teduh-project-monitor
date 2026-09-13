@@ -1,0 +1,3 @@
+portfolio_id,portfolio_name,description,active
+admin,Admin / Master Portfolio,All tracked projects using the master project classifications.,Yes
+test,Test Portfolio,A small profile for testing a focused project universe.,Yes

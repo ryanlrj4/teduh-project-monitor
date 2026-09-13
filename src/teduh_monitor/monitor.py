@@ -97,6 +97,13 @@ def _number(value: Any) -> float | None:
         return None
 
 
+def _days_until(snapshot_date: Any, future_date: Any) -> int | None:
+    try:
+        return (date.fromisoformat(str(future_date)) - date.fromisoformat(str(snapshot_date))).days
+    except (TypeError, ValueError):
+        return None
+
+
 def build_alerts(history: list[dict[str, Any]]) -> list[dict[str, str]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in history:
@@ -130,6 +137,32 @@ def build_alerts(history: list[dict[str, Any]]) -> list[dict[str, str]]:
             add(current, "critical", "permit_cancelled", f"Current TEDUH status is {status}")
         if current.get("construction_confidence") == "unavailable":
             add(current, "info", "construction_unavailable", str(current.get("construction_note") or "Construction percentage is unavailable"))
+        completed = "siap dengan" in status_folded
+        permit_days = _days_until(current.get("snapshot_date"), current.get("permit_end_date"))
+        if not completed and permit_days is not None:
+            if permit_days < 0:
+                add(current, "high", "permit_expired", "TEDUH reports that the current advertising and sales permit has expired")
+            elif permit_days <= 90:
+                add(current, "info", "permit_expiring", f"Current advertising and sales permit expires in {permit_days} day(s)")
+        licence_days = _days_until(
+            current.get("snapshot_date"), current.get("developer_license_end_date")
+        )
+        if licence_days is not None:
+            if licence_days < 0:
+                add(current, "high", "developer_licence_expired", "TEDUH reports that the developer licence has expired")
+            elif licence_days <= 90:
+                add(current, "info", "developer_licence_expiring", f"Developer licence expires in {licence_days} day(s)")
+        developer_status = str(current.get("developer_status") or "").strip()
+        if developer_status and developer_status.casefold() not in {"aktif", "active"}:
+            add(current, "high", "developer_inactive", f"Current TEDUH developer status is {developer_status}")
+        sales_gap = _number(current.get("sales_construction_gap"))
+        if sales_gap is not None and sales_gap <= -25:
+            add(
+                current,
+                "info",
+                "sales_lags_construction",
+                f"Unit sales trail construction progress by {abs(sales_gap):g} percentage points",
+            )
         if previous is None:
             continue
         previous_status = str(previous.get("project_status") or "")

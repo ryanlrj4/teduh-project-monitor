@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from decimal import Decimal
+from statistics import median
 from typing import Any
 
 from .config import HIMS_UNIT_DATA_START_ISO, SEARCH_PAGE_URL, TRANSFORMATION_VERSION
@@ -31,6 +32,70 @@ def flatten_units(payload: dict[str, Any] | None) -> list[dict[str, Any]]:
             row["group_jenis"] = group_type
             flattened.append(row)
     return flattened
+
+
+def is_bumi_unit(unit: dict[str, Any]) -> bool:
+    explicit = unit.get("kuota")
+    if isinstance(explicit, bool):
+        return explicit
+    if str(explicit or "").strip().casefold() in {
+        "1",
+        "true",
+        "yes",
+        "ya",
+        "bumi",
+        "bumiputera",
+    }:
+        return True
+    return str(unit.get("kuotaBumi") or "").strip().casefold() in {"yes", "ya"}
+
+
+def remaining_inventory_summary(
+    units: list[dict[str, Any]],
+    classifications: list[str],
+) -> list[dict[str, Any]]:
+    """Summarise non-sold inventory by TEDUH component, property type, and quota."""
+    grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for unit, status_class in zip(units, classifications):
+        if status_class not in {"unsold", "booked", "reserved"}:
+            continue
+        key = (
+            clean_text(unit.get("pembangunan_id")) or "",
+            clean_text(unit.get("group_jenis")) or "Unspecified",
+            "Bumiputera" if is_bumi_unit(unit) else "Non-Bumiputera",
+        )
+        grouped.setdefault(key, []).append(unit)
+
+    rows: list[dict[str, Any]] = []
+    for (component_id, property_type, quota_category), inventory in grouped.items():
+        prices = [parse_price(unit.get("hargaJualan")) for unit in inventory]
+        known_prices = [price for price in prices if price is not None]
+        rows.append(
+            {
+                "source_component_id": component_id,
+                "property_type": property_type,
+                "quota_category": quota_category,
+                "units": len(inventory),
+                "listed_value": (
+                    sum(known_prices, Decimal("0"))
+                    if len(known_prices) == len(inventory)
+                    else None
+                ),
+                "minimum_listed_price": min(known_prices) if known_prices else None,
+                "maximum_listed_price": max(known_prices) if known_prices else None,
+                "listed_price_coverage_percentage": safe_percentage(
+                    len(known_prices), len(inventory)
+                ),
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            str(row["property_type"]).casefold(),
+            str(row["source_component_id"]),
+            str(row["quota_category"]),
+        )
+    )
+    return rows
 
 
 def component_sales_summary(
@@ -320,11 +385,13 @@ def calculate_project_metrics(
     if sold_units == 0 and exact_unit_reconciliation:
         recorded_spa_sales_value: Decimal | None = Decimal("0")
         estimated_sold_value: Decimal | None = Decimal("0")
+        sold_listed_value: Decimal | None = Decimal("0")
     elif sold_units == 0:
         # With incomplete or absent unit rows, zero observed sales is not proof
         # of zero project sales or value.
         recorded_spa_sales_value = None
         estimated_sold_value = None
+        sold_listed_value = None
     else:
         spa_values = [parse_price(unit.get("hargaSPJB")) for unit in sold_rows]
         recorded_spa_sales_value = (
@@ -339,6 +406,12 @@ def calculate_project_metrics(
         estimated_sold_value = (
             sum((value for value in estimated_values if value is not None), Decimal("0"))
             if all(value is not None for value in estimated_values)
+            else None
+        )
+        sold_listed_prices = [parse_price(unit.get("hargaJualan")) for unit in sold_rows]
+        sold_listed_value = (
+            sum((value for value in sold_listed_prices if value is not None), Decimal("0"))
+            if all(value is not None for value in sold_listed_prices)
             else None
         )
 
@@ -380,6 +453,58 @@ def calculate_project_metrics(
     construction_percentage, construction_confidence, construction_note, construction_row_units = (
         weighted_construction(construction_rows, reported_total)
     )
+    value_sold_percentage = (
+        round(float(estimated_sold_value / potential_listed_gdv * 100), 6)
+        if estimated_sold_value is not None
+        and potential_listed_gdv is not None
+        and potential_listed_gdv > 0
+        and gdv_confidence in {"high", "medium"}
+        and sales_value_confidence in {"high", "medium"}
+        else None
+    )
+    sales_construction_gap = (
+        round(float(sales_percentage - construction_percentage), 6)
+        if sales_percentage is not None and construction_percentage is not None
+        else None
+    )
+
+    price_pairs = [
+        (parse_price(unit.get("hargaJualan")), parse_price(unit.get("hargaSPJB")))
+        for unit in sold_rows
+    ]
+    complete_price_pairs = [
+        (listed, spa)
+        for listed, spa in price_pairs
+        if listed is not None and listed > 0 and spa is not None
+    ]
+    paired_listed_value = sum((listed for listed, _ in complete_price_pairs), Decimal("0"))
+    paired_spa_value = sum((spa for _, spa in complete_price_pairs), Decimal("0"))
+    recorded_price_realisation_percentage = (
+        round(float(paired_spa_value / paired_listed_value * 100), 6)
+        if paired_listed_value > 0
+        else None
+    )
+    recorded_discounts = [
+        float((Decimal("1") - (spa / listed)) * 100)
+        for listed, spa in complete_price_pairs
+    ]
+    median_recorded_discount_percentage = (
+        round(median(recorded_discounts), 6) if recorded_discounts else None
+    )
+
+    bumi_rows = [unit for unit in units if is_bumi_unit(unit)]
+    bumi_classes = [
+        normalize_sales_status(unit.get("statusJualan"), unit.get("status"))
+        for unit in bumi_rows
+    ]
+    bumi_counts = Counter(bumi_classes)
+    bumi_sold_units = bumi_counts["sold"]
+    bumi_unsold_units = (
+        bumi_counts["unsold"] + bumi_counts["booked"] + bumi_counts["reserved"]
+    )
+    bumi_comparable_units = bumi_sold_units + bumi_unsold_units
+    bumi_sales_percentage = safe_percentage(bumi_sold_units, bumi_comparable_units)
+    remaining_inventory = remaining_inventory_summary(units, classifications)
     teduh_spa_price_min, teduh_spa_price_max = teduh_spa_price_range(construction_rows)
     ccc_date, vp_date = component_completion_dates(construction_rows)
 
@@ -446,11 +571,20 @@ def calculate_project_metrics(
         "unknown_sales_status_units": unknown_units,
         "comparable_total_units": comparable_total,
         "sales_percentage": sales_percentage,
+        "value_sold_percentage": value_sold_percentage,
+        "sales_construction_gap": sales_construction_gap,
         "construction_percentage": construction_percentage,
         "potential_listed_gdv": potential_listed_gdv,
+        "sold_listed_value": sold_listed_value,
         "recorded_spa_sales_value": recorded_spa_sales_value,
         "estimated_sold_value": estimated_sold_value,
         "remaining_listed_value": remaining_listed_value,
+        "recorded_price_realisation_percentage": recorded_price_realisation_percentage,
+        "median_recorded_discount_percentage": median_recorded_discount_percentage,
+        "bumi_total_units": len(bumi_rows),
+        "bumi_sold_units": bumi_sold_units,
+        "bumi_unsold_units": bumi_unsold_units,
+        "bumi_sales_percentage": bumi_sales_percentage,
         "minimum_indicative_gdv": minimum_indicative_gdv,
         "maximum_indicative_gdv": maximum_indicative_gdv,
         "unit_coverage_percentage": unit_coverage,
@@ -476,6 +610,12 @@ def calculate_project_metrics(
         "transformation_version": TRANSFORMATION_VERSION,
         "construction_rows_json": json.dumps(construction_rows, ensure_ascii=False, separators=(",", ":")),
         "component_sales_json": json.dumps(component_sales, ensure_ascii=False, separators=(",", ":")),
+        "remaining_inventory_json": json.dumps(
+            remaining_inventory,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            default=str,
+        ),
         "permit_history_json": json.dumps(detail.get("lesen_records") or [], ensure_ascii=False, separators=(",", ":")),
     }
     return result

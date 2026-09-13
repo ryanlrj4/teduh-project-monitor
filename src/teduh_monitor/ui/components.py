@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pandas as pd
 import streamlit as st
 
@@ -129,6 +131,64 @@ def render_refresh_status_panel(settings: Settings) -> None:
             )
 
 
+def render_weekly_progress(project_history: pd.DataFrame) -> None:
+    st.markdown("#### Weekly progress")
+    if project_history.empty:
+        st.info("No dated observations have been stored for this project yet.")
+        return
+    weekly = project_history.copy()
+    weekly["week_start"] = weekly["observation_date"] - pd.to_timedelta(
+        weekly["observation_date"].dt.weekday, unit="D"
+    )
+    weekly = weekly.groupby("week_start", as_index=False).tail(1).sort_values("week_start")
+    weekly["Week"] = weekly["week_start"].dt.strftime("%d %b %Y")
+    weekly["Units sold"] = weekly["sold_units"]
+    weekly["Weekly units sold"] = weekly["sold_units"].diff()
+    weekly["Unit sales %"] = weekly["sales_percentage"]
+    weekly["Unit sales change"] = weekly["sales_percentage"].diff()
+    weekly["Value sold %"] = weekly.get("value_sold_percentage")
+    weekly["Construction %"] = weekly["construction_percentage"]
+    weekly["Construction change"] = weekly["construction_percentage"].diff()
+    weekly["Status"] = weekly["project_status"]
+    if len(weekly) == 1:
+        st.info(
+            "This is the opening observation. Past sales dates cannot be reconstructed from TEDUH's current snapshot."
+        )
+    chart_columns = ["Unit sales %", "Value sold %", "Construction %"]
+    chart = weekly.set_index("week_start")[[
+        column for column in chart_columns if column in weekly.columns
+    ]].dropna(axis=1, how="all")
+    if not chart.empty:
+        st.line_chart(chart, height=250)
+    weekly["Units sold display"] = weekly["Units sold"].map(whole_number)
+    weekly["Weekly units sold display"] = weekly["Weekly units sold"].map(signed_number)
+    weekly["Unit sales display"] = weekly["Unit sales %"].map(pct)
+    weekly["Value sold display"] = weekly["Value sold %"].map(pct)
+    weekly["Construction display"] = weekly["Construction %"].map(pct)
+    st.dataframe(
+        weekly[
+            [
+                "Week",
+                "Units sold display",
+                "Weekly units sold display",
+                "Unit sales display",
+                "Value sold display",
+                "Construction display",
+                "Status",
+            ]
+        ],
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Units sold display": "Units sold",
+            "Weekly units sold display": "Weekly units sold",
+            "Unit sales display": "Unit sales",
+            "Value sold display": "Value sold",
+            "Construction display": "Construction",
+        },
+    )
+
+
 
 def render_project_details(
     selected: pd.Series,
@@ -136,6 +196,7 @@ def render_project_details(
     *,
     container_key: str,
     manual_container_key: str,
+    on_view_group: Callable[[str], None] | None = None,
 ) -> None:
     preferred_name = str(
         selected.get("display_name")
@@ -175,6 +236,14 @@ def render_project_details(
         identity_right.write(display_text(selected.get("source_project_id")))
         identity_status.markdown("**Current status** · `TEDUH`")
         identity_status.write(display_text(selected.get("project_status")))
+        parent_group = str(selected.get("parent_group") or "").strip()
+        if parent_group and on_view_group is not None:
+            st.button(
+                f"View all {parent_group} developments",
+                key=f"view_group_{container_key}_{selected.get('source_project_id')}",
+                on_click=on_view_group,
+                args=(parent_group,),
+            )
 
         status_folded = str(selected.get("project_status") or "").casefold()
         if any(term in status_folded for term in ("sakit", "lewat", "batal")):
@@ -184,32 +253,33 @@ def render_project_details(
             )
 
         st.markdown("#### Current monitoring summary")
-        progress_columns = st.columns(5)
+        progress_columns = st.columns(4)
         progress_columns[0].metric(
             "Units sold · Calculated",
             f"{whole_number(selected.get('sold_units'))} / {whole_number(selected.get('reported_total_units'))}",
             help="Calculated from individual TEDUH unit sales statuses.",
         )
         progress_columns[1].metric(
-            "Sales · Calculated",
+            "Unit sales · Calculated",
             pct(selected.get("sales_percentage")),
             help="Sold units divided by comparable TEDUH unit records; not an official TEDUH percentage.",
         )
         progress_columns[2].metric(
+            "Value sold · Calculated",
+            pct(selected.get("value_sold_percentage")),
+            help="Estimated sold value divided by potential listed GDV where both measures pass coverage checks.",
+        )
+        progress_columns[3].metric(
             "Construction · Calculated",
             pct(selected.get("construction_percentage")),
             help="Unit-weighted calculation from TEDUH component rows where reconciliation checks pass.",
         )
-        progress_columns[3].metric(
-            "CCC/CFO · TEDUH",
-            display_text(selected.get("ccc_obtained")),
-            help="Based on TEDUH project or component completion evidence.",
-        )
-        progress_columns[4].metric(
-            "Actual VP · TEDUH",
-            display_date(selected.get("vp_date")),
-            help="Latest valid VP date in TEDUH's component-status rows.",
-        )
+        gap = selected.get("sales_construction_gap")
+        if pd.notna(gap):
+            st.caption(
+                f"Unit sales are {signed_number(gap, decimals=1, suffix=' pp')} versus construction progress. "
+                "This gap is a monitoring signal, not a credit conclusion."
+            )
 
         if len(project_history) >= 2:
             previous = project_history.iloc[-2]
@@ -247,8 +317,77 @@ def render_project_details(
             "Value measures are analytical monitoring estimates, not audited developer GDV, revenue or credit conclusions."
         )
 
+        render_weekly_progress(project_history)
+
+        inventory_rows = json_rows(selected.get("remaining_inventory_json"))
+        with st.expander("Remaining inventory, quota and recorded pricing"):
+            inventory_summary = st.columns(4)
+            inventory_summary[0].metric(
+                "Remaining units · Calculated",
+                whole_number(
+                    float(selected.get("comparable_total_units") or 0)
+                    - float(selected.get("sold_units") or 0)
+                ),
+            )
+            inventory_summary[1].metric(
+                "Bumiputera units sold",
+                f"{whole_number(selected.get('bumi_sold_units'))} / {whole_number(selected.get('bumi_total_units'))}",
+            )
+            inventory_summary[2].metric(
+                "Bumiputera unit sales",
+                pct(selected.get("bumi_sales_percentage")),
+            )
+            inventory_summary[3].metric(
+                "Recorded price realisation",
+                pct(selected.get("recorded_price_realisation_percentage")),
+                help="Recorded SPA value divided by listed value for sold units where both TEDUH prices are available.",
+            )
+            discount = selected.get("median_recorded_discount_percentage")
+            if pd.notna(discount):
+                st.caption(
+                    f"Median recorded discount to TEDUH listed price: {pct(discount)}. "
+                    "Negative values indicate recorded SPA prices above listed prices."
+                )
+            if not inventory_rows:
+                st.info("Inventory detail will appear after the next TEDUH refresh using v1.5.")
+            else:
+                inventory = pd.DataFrame(inventory_rows)
+                inventory["Property type"] = inventory["property_type"].map(display_text)
+                inventory["Quota"] = inventory["quota_category"].map(display_text)
+                inventory["Units"] = inventory["units"].map(whole_number)
+                inventory["Listed value"] = inventory["listed_value"].map(money)
+                inventory["Price range"] = inventory.apply(
+                    lambda row: numeric_range(
+                        row.get("minimum_listed_price"),
+                        row.get("maximum_listed_price"),
+                        prefix="RM ",
+                    ),
+                    axis=1,
+                )
+                st.dataframe(
+                    inventory[["Property type", "Quota", "Units", "Listed value", "Price range"]],
+                    hide_index=True,
+                    width="stretch",
+                )
+            st.caption(
+                "Calculated from current TEDUH unit records. Booked and reserved records remain in remaining inventory until reported sold."
+            )
+
         component_sales = json_rows(selected.get("component_sales_json"))
-        with st.expander("Sales by TEDUH block/component", expanded=len(component_sales) > 1):
+        component_percentages = [
+            float(row["sales_percentage"])
+            for row in component_sales
+            if row.get("sales_percentage") not in (None, "")
+        ]
+        component_dispersion = (
+            max(component_percentages) - min(component_percentages)
+            if len(component_percentages) > 1
+            else 0
+        )
+        with st.expander(
+            "Sales by TEDUH block/component",
+            expanded=len(component_sales) > 1 and component_dispersion >= 10,
+        ):
             if not component_sales:
                 st.info("Component sales will appear after the next refresh using the updated data model.")
             else:
@@ -279,7 +418,12 @@ def render_project_details(
             display_text(selected.get(field)) not in {"N/A", "Tidak", "No"}
             for field in ("vp_period_amended", "approved_extension_period", "revised_vp_date")
         )
-        with st.expander("Contractual timeline and completion", expanded=agreement_expanded):
+        if agreement_expanded:
+            st.warning(
+                "TEDUH records an amended or extended contractual timeline for this project. "
+                "Open the timeline section for details."
+            )
+        with st.expander("Contractual timeline and completion"):
             contract_top = st.columns(4)
             contract_top[0].metric(
                 "Agreement type · TEDUH",
@@ -440,7 +584,7 @@ def render_project_details(
                         st.markdown("**Monitoring notes · Local**")
                         st.write(str(selected.get("tracking_notes")))
 
-        with st.expander("Weekly progress and data provenance"):
+        with st.expander("Data provenance"):
             timing = st.columns(2)
             timing[0].metric(
                 "Retrieved from TEDUH · Application",
@@ -452,62 +596,3 @@ def render_project_details(
                 display_date(selected.get("source_dataset_as_of")),
                 help="Portal-wide TEDUH frontend label; not an authoritative per-project API timestamp.",
             )
-            if project_history.empty:
-                st.info("No dated observations have been stored for this project yet.")
-            else:
-                project_history["week_start"] = project_history["observation_date"] - pd.to_timedelta(
-                    project_history["observation_date"].dt.weekday, unit="D"
-                )
-                weekly = project_history.groupby("week_start", as_index=False).tail(1).copy()
-                weekly = weekly.sort_values("week_start")
-                weekly["Week"] = weekly["week_start"].dt.strftime("%d %b %Y")
-                weekly["Units sold"] = weekly["sold_units"]
-                weekly["Weekly units sold"] = weekly["sold_units"].diff()
-                weekly["Sales %"] = weekly["sales_percentage"]
-                weekly["Sales change"] = weekly["sales_percentage"].diff()
-                weekly["Construction %"] = weekly["construction_percentage"]
-                weekly["Construction change"] = weekly["construction_percentage"].diff()
-                weekly["Status"] = weekly["project_status"]
-                if len(weekly) == 1:
-                    st.info(
-                        "This is the opening observation. Past sales dates cannot be reconstructed from TEDUH's current snapshot."
-                    )
-                chart = weekly.set_index("week_start")[["Sales %", "Construction %"]].dropna(
-                    axis=1, how="all"
-                )
-                if not chart.empty:
-                    st.line_chart(chart, height=260)
-                weekly["Units sold display"] = weekly["Units sold"].map(whole_number)
-                weekly["Weekly units sold display"] = weekly["Weekly units sold"].map(signed_number)
-                weekly["Sales display"] = weekly["Sales %"].map(pct)
-                weekly["Sales change display"] = weekly["Sales change"].map(
-                    lambda value: signed_number(value, decimals=1, suffix=" pp")
-                )
-                weekly["Construction display"] = weekly["Construction %"].map(pct)
-                weekly["Construction change display"] = weekly["Construction change"].map(
-                    lambda value: signed_number(value, decimals=1, suffix=" pp")
-                )
-                st.dataframe(
-                    weekly[
-                        [
-                            "Week",
-                            "Units sold display",
-                            "Weekly units sold display",
-                            "Sales display",
-                            "Sales change display",
-                            "Construction display",
-                            "Construction change display",
-                            "Status",
-                        ]
-                    ],
-                    hide_index=True,
-                    width="stretch",
-                    column_config={
-                        "Units sold display": "Units sold",
-                        "Weekly units sold display": "Weekly units sold",
-                        "Sales display": "Sales",
-                        "Sales change display": "Sales change",
-                        "Construction display": "Construction",
-                        "Construction change display": "Construction change",
-                    },
-                )

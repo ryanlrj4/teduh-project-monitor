@@ -79,13 +79,20 @@ These fields are entered locally and are not claimed to come from TEDUH.
 | `statusJualan` with `status` fallback | `sold_units`, `unsold_units` | integer | User-facing counts using the controlled mapping | Missing unit endpoints do not become business facts |
 | Each `unitGroups[]` collection | `component_sales_json` | JSON text | Per-component sold, unsold, total, calculated sales percentage, source component ID and property type | Neutral component label used when no block name is supplied |
 | Component summary checks | `component_sales_count`, `component_sales_confidence`, `component_sales_note` | integer/text | Group count and reconciliation outcome for component sales | Note explains withheld or low-confidence data |
-| Booked/reserved/unknown controlled mapping | Internal QA counters | integer | Safeguards against silently misclassifying future status values | Checked and reported in data-quality documentation; omitted from public tables |
+| Booked/reserved/unknown controlled mapping | `booked_or_reserved_units`, `unknown_sales_status_units` | integer | Safeguards against silently misclassifying future status values | Stored explicitly; unknown classes remain outside the sales denominator |
 | Known classes | `comparable_total_units` | integer | Denominator for calculated sales percentage | Unknown classes excluded |
 | Sold / comparable | `sales_percentage` | decimal percent | Calculated, not an official TEDUH percentage | Null for zero denominator |
+| Estimated sold value / potential listed GDV | `value_sold_percentage` | decimal percent | Estimated share of potential listed value sold | Null unless both value measures pass coverage checks |
+| Unit sales % − construction % | `sales_construction_gap` | decimal percentage points | Directional sales-versus-delivery monitoring signal | Null if either percentage is unavailable |
 | Sum of qualifying `hargaJualan` | `potential_listed_gdv` | decimal RM | Potential listed value under coverage rules | Withheld when rules fail |
+| Sold `hargaJualan` | `sold_listed_value` | decimal RM | Listed value associated with sold units | Null if any sold unit lacks listed price |
 | Sold `hargaSPJB` | `recorded_spa_sales_value` | decimal RM | Sum of recorded sold-unit SPA prices | Null if sold units exist but none has SPA price |
 | Sold `COALESCE(hargaSPJB,hargaJualan)` | `estimated_sold_value` | decimal RM | Disclosed estimate using listed price fallback | Null if a sold unit has neither price |
 | Non-sold `hargaJualan` | `remaining_listed_value` | decimal RM | Listed value of unsold/booked/reserved units | Withheld when coverage fails |
+| Paired sold-unit SPA / listed values | `recorded_price_realisation_percentage` | decimal percent | Recorded SPA value as a share of listed value for paired records | Null when no valid pair exists |
+| Paired unit discounts | `median_recorded_discount_percentage` | decimal percent | Median `(listed − SPA) / listed` across paired records | Null when no valid pair exists |
+| Unit quota and sales status | `bumi_total_units`, `bumi_sold_units`, `bumi_unsold_units`, `bumi_sales_percentage` | integer/percent | Bumiputera-unit mix and unit sales | Null percentage for zero comparable Bumiputera units |
+| Non-sold unit type, component, quota and price | `remaining_inventory_json` | JSON text | Remaining inventory breakdown used in project details | Empty list when no eligible rows are available |
 | Construction row units × min/max price | `minimum_indicative_gdv`, `maximum_indicative_gdv` | decimal RM | Strict indicative range | Null unless rows partition units and prices are complete |
 | Observed / reported units | `unit_coverage_percentage` | decimal percent | Reconciliation coverage | Null for missing/zero denominator |
 | Priced / observed units | `listed_price_coverage_percentage` | decimal percent | Listed-price coverage | Null for zero observed units |

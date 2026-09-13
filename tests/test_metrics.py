@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from teduh_monitor.metrics import (
     calculate_project_metrics,
     ccc_obtained,
@@ -7,6 +9,7 @@ from teduh_monitor.metrics import (
     component_completion_dates,
     duplicate_unit_count,
     indicative_gdv_range,
+    remaining_inventory_summary,
     teduh_spa_price_range,
     weighted_construction,
 )
@@ -131,8 +134,11 @@ def test_sold_count_coverage_and_values() -> None:
     assert result["sold_units"] == 1
     assert result["unsold_units"] == 1
     assert result["sales_percentage"] == 50.0
+    assert result["value_sold_percentage"] == pytest.approx(40.909091)
+    assert result["sales_construction_gap"] == 0.0
     assert result["unit_coverage_percentage"] == 100.0
     assert result["potential_listed_gdv"] == Decimal("220000.00")
+    assert result["sold_listed_value"] == Decimal("100000.00")
     assert result["recorded_spa_sales_value"] == Decimal("90000.00")
     assert result["teduh_spa_price_min"] == Decimal("100000")
     assert result["teduh_spa_price_max"] == Decimal("200000")
@@ -141,6 +147,21 @@ def test_sold_count_coverage_and_values() -> None:
     assert result["gdv_confidence"] == "high"
     assert result["sales_value_confidence"] == "high"
     assert result["construction_percentage"] == 50.0
+    assert result["recorded_price_realisation_percentage"] == 90.0
+    assert result["median_recorded_discount_percentage"] == 10.0
+
+
+def test_remaining_inventory_groups_type_and_quota() -> None:
+    units = [
+        {"pembangunan_id": 1, "group_jenis": "Apartment", "kuotaBumi": "Ya", "hargaJualan": "100000"},
+        {"pembangunan_id": 1, "group_jenis": "Apartment", "kuotaBumi": "Ya", "hargaJualan": "110000"},
+        {"pembangunan_id": 1, "group_jenis": "Apartment", "kuotaBumi": "Tidak", "hargaJualan": "120000"},
+    ]
+    rows = remaining_inventory_summary(units, ["unsold", "booked", "sold"])
+    assert len(rows) == 1
+    assert rows[0]["quota_category"] == "Bumiputera"
+    assert rows[0]["units"] == 2
+    assert rows[0]["listed_value"] == Decimal("210000")
 
 
 def test_project_metadata_preserves_teduh_contract_and_licence_fields() -> None:

@@ -15,6 +15,12 @@ ALERT_PRESENTATION = {
     "construction_decreased": ("Reported construction decreased", "Source revision", "Review"),
     "construction_unavailable": ("Construction unavailable", "Data quality", "Notice"),
     "completion_certificate_obtained": ("CCC/CFO evidence reported", "Completion", "Notice"),
+    "permit_expired": ("Permit expired", "Permit", "High"),
+    "permit_expiring": ("Permit nearing expiry", "Permit", "Notice"),
+    "developer_licence_expired": ("Developer licence expired", "Developer", "High"),
+    "developer_licence_expiring": ("Developer licence nearing expiry", "Developer", "Notice"),
+    "developer_inactive": ("Developer not active", "Developer", "High"),
+    "sales_lags_construction": ("Sales lag construction", "Commercial progress", "Review"),
 }
 
 TEDUH_ENGLISH_LABELS = {

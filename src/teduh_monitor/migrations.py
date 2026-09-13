@@ -35,3 +35,51 @@ def backfill_legacy_completion_dates(frame: pd.DataFrame) -> pd.DataFrame:
         if migrated.at[index, "vp_date"] in (None, ""):
             migrated.at[index, "vp_date"] = vp_date
     return migrated
+
+
+def backfill_v15_derived_metrics(frame: pd.DataFrame) -> pd.DataFrame:
+    """Populate v1.5 ratios that can be derived from an existing observation."""
+    if frame.empty:
+        return frame
+    migrated = frame.copy()
+    numeric_sources = (
+        "estimated_sold_value",
+        "potential_listed_gdv",
+        "sales_percentage",
+        "construction_percentage",
+    )
+    for field in numeric_sources:
+        if field not in migrated.columns:
+            migrated[field] = pd.NA
+        migrated[field] = pd.to_numeric(migrated[field], errors="coerce")
+
+    if "value_sold_percentage" not in migrated.columns:
+        migrated["value_sold_percentage"] = pd.NA
+    denominator = migrated["potential_listed_gdv"].where(
+        migrated["potential_listed_gdv"] > 0
+    )
+    derived_value_sold = migrated["estimated_sold_value"] / denominator * 100
+    migrated["value_sold_percentage"] = pd.to_numeric(
+        migrated["value_sold_percentage"], errors="coerce"
+    ).fillna(derived_value_sold)
+
+    if "sales_construction_gap" not in migrated.columns:
+        migrated["sales_construction_gap"] = pd.NA
+    derived_gap = migrated["sales_percentage"] - migrated["construction_percentage"]
+    migrated["sales_construction_gap"] = pd.to_numeric(
+        migrated["sales_construction_gap"], errors="coerce"
+    ).fillna(derived_gap)
+    for field in (
+        "sold_listed_value",
+        "recorded_price_realisation_percentage",
+        "median_recorded_discount_percentage",
+        "bumi_total_units",
+        "bumi_sold_units",
+        "bumi_unsold_units",
+        "bumi_sales_percentage",
+    ):
+        if field not in migrated.columns:
+            migrated[field] = pd.NA
+    if "remaining_inventory_json" not in migrated.columns:
+        migrated["remaining_inventory_json"] = ""
+    return migrated

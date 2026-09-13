@@ -49,3 +49,26 @@ def test_alerts_flag_risk_and_negative_changes() -> None:
         "construction_decreased",
         "completion_certificate_obtained",
     }.issubset(codes)
+
+
+def test_alerts_surface_permit_developer_and_sales_gap_exceptions() -> None:
+    history = [
+        {
+            "snapshot_date": "2026-09-13",
+            "source_project_id": "1-1",
+            "display_name": "Example",
+            "project_status": "Lancar",
+            "construction_confidence": "high",
+            "permit_end_date": "2026-09-01",
+            "developer_license_end_date": "2026-10-01",
+            "developer_status": "Tidak Aktif",
+            "sales_construction_gap": "-30",
+        }
+    ]
+    codes = {alert["alert_code"] for alert in build_alerts(history)}
+    assert {
+        "permit_expired",
+        "developer_licence_expiring",
+        "developer_inactive",
+        "sales_lags_construction",
+    }.issubset(codes)

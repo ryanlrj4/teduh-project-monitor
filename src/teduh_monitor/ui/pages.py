@@ -7,10 +7,10 @@ import streamlit as st
 
 from ..config import DEFAULT_REGION, REGION_CONFIGS, Settings
 from ..discovery import discovery_manifest_path, load_discovery_catalog, run_discovery
-from ..monitor import snapshot_shortlist
-from ..presentation import latest_project_changes, present_alert
+from ..presentation import present_alert
 from ..shortlist import PROJECT_SETS, upsert_shortlist_project
-from .components import render_project_details, render_refresh_status_panel
+from .components import render_project_details
+from .workspace_pages import render_refresh_and_data_quality
 from .formatting import (
     display_date,
     display_text,
@@ -18,8 +18,6 @@ from .formatting import (
     money,
     pct,
     region_label,
-    signed_number,
-    status_change,
     whole_number,
 )
 
@@ -31,176 +29,12 @@ SET_LABELS = {
 }
 
 
-def render_overview(
+def render_all_projects(
     current: pd.DataFrame,
     history: pd.DataFrame,
-    active_shortlist: list[dict[str, str]],
+    *,
+    on_view_group=None,
 ) -> None:
-    if current.empty:
-        st.info("The authorized starter shortlist is ready. Run the first shortlist refresh to populate TEDUH metrics.")
-        st.caption(f"Tracking {len(active_shortlist):,} projects")
-    else:
-        reporting_current = current[current["project_set"] == "reporting_set"].copy()
-        if reporting_current.empty:
-            st.info("No Reporting Set projects are currently available. Add them from the Shortlist or Discovery tabs.")
-            return
-        observed_regions = set(reporting_current["region"].dropna().astype(str))
-        region_options = ["All regions"] + [
-            region for region in REGION_CONFIGS if region in observed_regions
-        ]
-        selected_region = st.radio(
-            "Region",
-            region_options,
-            horizontal=True,
-            key="overview_region",
-            format_func=region_label,
-        )
-        view = (
-            reporting_current
-            if selected_region == "All regions"
-            else reporting_current[reporting_current["region"] == selected_region]
-        )
-        st.caption(f"Showing {len(view):,} Reporting Set projects")
-        risk_mask = view["project_status"].fillna("").str.casefold().str.contains("sakit|lewat|batal")
-
-        st.subheader("Changes since the previous observation")
-        changes = latest_project_changes(view, history)
-        if changes.empty:
-            st.info("No sales, construction or TEDUH status changes were recorded for these projects.")
-        else:
-            changes["region_display"] = changes["region"].map(region_label)
-            changes["status_display"] = changes.apply(
-                lambda row: status_change(row["previous_status"], row["current_status"]), axis=1
-            )
-            changes["sold_change_display"] = changes["sold_units_delta"].map(
-                lambda value: signed_number(value, zero_label="No change")
-            )
-            changes["sales_change_display"] = changes["sales_percentage_delta"].map(
-                lambda value: signed_number(value, decimals=1, suffix=" pp", zero_label="No change")
-            )
-            changes["construction_change_display"] = changes["construction_percentage_delta"].map(
-                lambda value: signed_number(value, decimals=1, suffix=" pp", zero_label="No change")
-            )
-            changes["comparison_display"] = changes.apply(
-                lambda row: f"{display_date(row['previous_snapshot_date'])} → {display_date(row['current_snapshot_date'])}",
-                axis=1,
-            )
-            change_columns = [
-                "display_name",
-                "region_display",
-                "status_display",
-                "sold_change_display",
-                "sales_change_display",
-                "construction_change_display",
-                "comparison_display",
-            ]
-            st.dataframe(
-                changes[change_columns],
-                hide_index=True,
-                width="stretch",
-                column_config={
-                    "display_name": "Project",
-                    "region_display": "Region",
-                    "status_display": "TEDUH status",
-                    "sold_change_display": "Units sold",
-                    "sales_change_display": "Sales",
-                    "construction_change_display": "Construction",
-                    "comparison_display": "Compared observations",
-                },
-            )
-        st.caption("Each project is compared with its latest earlier dated observation.")
-
-        st.subheader("Current TEDUH Exceptions")
-        risk_columns = ["display_name", "parent_group", "project_status", "sales_percentage", "construction_percentage"]
-        if selected_region == "All regions":
-            risk_columns.insert(1, "region")
-        risk = view.loc[
-            risk_mask,
-            risk_columns,
-        ].copy()
-        risk["parent_group"] = risk["parent_group"].fillna("").replace("", "N/A")
-        if "region" in risk.columns:
-            risk["region"] = risk["region"].map(region_label)
-        if risk.empty:
-            st.success("No current Sakit, Lewat or cancelled statuses.")
-        else:
-            risk["sales_display"] = risk["sales_percentage"].map(pct)
-            risk["construction_display"] = risk["construction_percentage"].map(pct)
-            risk = risk.drop(columns=["sales_percentage", "construction_percentage"])
-            st.dataframe(
-                risk,
-                hide_index=True,
-                width="stretch",
-                column_config={
-                    "display_name": "Project",
-                    "region": "Region",
-                    "parent_group": "Parent group",
-                    "project_status": "Status",
-                    "sales_display": "Sales",
-                    "construction_display": "Construction",
-                },
-            )
-
-        st.subheader("Current Reporting Set snapshot")
-        st.caption("Select one project row to open its financial and source details.")
-        snapshot = view.copy().reset_index(drop=True)
-        snapshot["developer_or_parent_group"] = snapshot.apply(
-            lambda row: row.get("parent_group") or row.get("developer_name") or "—",
-            axis=1,
-        )
-        snapshot["sold_display"] = snapshot["sold_units"].map(whole_number)
-        snapshot["units_display"] = snapshot["reported_total_units"].map(whole_number)
-        snapshot["potential_gdv_display"] = snapshot["potential_listed_gdv"].map(money)
-        snapshot["region_display"] = snapshot["region"].map(region_label)
-        snapshot["project_set_display"] = (
-            snapshot["project_set"].map(SET_LABELS).fillna(snapshot["project_set"])
-        )
-        overview_columns = [
-            "display_name",
-            "developer_or_parent_group",
-            "region_display",
-            "project_status",
-            "sold_display",
-            "units_display",
-            "sales_percentage",
-            "construction_percentage",
-            "potential_gdv_display",
-            "project_set_display",
-        ]
-        snapshot_event = st.dataframe(
-            snapshot[overview_columns],
-            hide_index=True,
-            width="stretch",
-            key=f"current_shortlist_snapshot_{selected_region}",
-            on_select="rerun",
-            selection_mode="single-row",
-            selection_default={"selection": {"rows": [0]}},
-            column_config={
-                "display_name": "Project",
-                "region_display": "Region",
-                "developer_or_parent_group": "Parent group / developer",
-                "project_set_display": "Project set",
-                "project_status": "TEDUH status",
-                "sold_display": "Sold",
-                "units_display": "Units",
-                "sales_percentage": st.column_config.ProgressColumn("Sales", min_value=0, max_value=100, format="%.1f%%"),
-                "construction_percentage": st.column_config.ProgressColumn("Construction", min_value=0, max_value=100, format="%.1f%%"),
-                "potential_gdv_display": "Potential GDV",
-            },
-        )
-        selected_rows = snapshot_event.selection.rows
-        if selected_rows:
-            selected = snapshot.iloc[selected_rows[0]]
-            render_project_details(
-                selected,
-                history,
-                container_key="project_detail_panel",
-                manual_container_key="manual_project_details",
-            )
-
-
-
-def render_all_projects(current: pd.DataFrame, history: pd.DataFrame) -> None:
     st.subheader("All tracked projects")
     st.caption("Search and filter the complete Reporting Set, Comparator Set and General project universe.")
     if current.empty:
@@ -325,6 +159,7 @@ def render_all_projects(current: pd.DataFrame, history: pd.DataFrame) -> None:
                     history,
                     container_key="all_projects_detail_panel",
                     manual_container_key="all_projects_manual_project_details",
+                    on_view_group=on_view_group,
                 )
 
 
@@ -333,6 +168,8 @@ def render_shortlist(
     settings: Settings,
     shortlist_rows: list[dict[str, str]],
     registry_name_by_code: dict[str, str],
+    *,
+    include_refresh: bool = True,
 ) -> None:
     st.subheader("Saved projects")
     st.caption(
@@ -378,43 +215,8 @@ def render_shortlist(
                 "tracking_notes": "Your notes",
             },
         )
-    st.divider()
-    render_refresh_status_panel(settings)
-    st.divider()
-    refresh_spacer, refresh_action = st.columns([3, 1])
-    with refresh_action:
-        refresh_clicked = st.button("Refresh TEDUH shortlist", type="primary", width="stretch")
-    if refresh_clicked:
-        progress_messages: list[str] = []
-        refresh_progress = st.progress(0.0, text="Preparing TEDUH shortlist refresh…")
-
-        def update_refresh_progress(
-            completed: int,
-            total: int,
-            project_code: str,
-            succeeded: bool,
-        ) -> None:
-            fraction = completed / total if total else 0.0
-            refresh_progress.progress(
-                fraction,
-                text=f"Reviewed {completed}/{total} shortlist projects · {project_code}",
-            )
-
-        try:
-            with st.spinner("Refreshing active projects sequentially from TEDUH…"):
-                result = snapshot_shortlist(
-                    settings,
-                    progress=progress_messages.append,
-                    project_progress=update_refresh_progress,
-                )
-            refresh_progress.progress(1.0, text="Refresh completed and validated")
-            st.session_state["app_notice"] = (
-                f"Refresh completed: {result['project_count']} projects and {result['alert_count']} alerts."
-            )
-            st.rerun()
-        except Exception as exc:
-            st.session_state["app_error"] = str(exc)
-            st.rerun()
+    if include_refresh:
+        render_refresh_and_data_quality(settings)
 
 
 

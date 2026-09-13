@@ -38,7 +38,7 @@ The output has two kinds of columns:
 
 Manual fields are preserved when TEDUH is refreshed. A source failure cannot silently replace the last valid output.
 
-The Shortlist tab retains a refresh-status panel after Streamlit reruns. It records whether the latest attempt succeeded or failed, project counts, elapsed time, same-day cache usage, source data-through date, publication outcome, and recent runs. A failed run explicitly records that the previous valid snapshot was preserved.
+The **Refresh & data quality** page retains a refresh-status panel after Streamlit reruns. It records whether the latest attempt succeeded or failed, project counts, elapsed time, same-day cache usage, source data-through date, publication outcome, and recent runs. A failed run explicitly records that the previous valid snapshot was preserved.
 
 ## Project details and component sales
 

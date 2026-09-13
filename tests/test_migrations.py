@@ -2,7 +2,10 @@ import json
 
 import pandas as pd
 
-from teduh_monitor.migrations import backfill_legacy_completion_dates
+from teduh_monitor.migrations import (
+    backfill_legacy_completion_dates,
+    backfill_v15_derived_metrics,
+)
 
 
 def test_legacy_completion_backfill_preserves_existing_values() -> None:
@@ -32,3 +35,19 @@ def test_legacy_completion_backfill_ignores_malformed_component_data() -> None:
 
     assert migrated.loc[0, "ccc_date"] is None
     assert migrated.loc[0, "vp_date"] is None
+
+
+def test_v15_backfill_derives_value_sales_and_progress_gap() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "estimated_sold_value": "40",
+                "potential_listed_gdv": "100",
+                "sales_percentage": "60",
+                "construction_percentage": "45",
+            }
+        ]
+    )
+    migrated = backfill_v15_derived_metrics(frame)
+    assert migrated.loc[0, "value_sold_percentage"] == 40
+    assert migrated.loc[0, "sales_construction_gap"] == 15

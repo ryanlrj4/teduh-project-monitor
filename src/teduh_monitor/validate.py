@@ -9,6 +9,7 @@ from .config import HIMS_UNIT_DATA_START_ISO
 
 MONEY_FIELDS = (
     "potential_listed_gdv",
+    "sold_listed_value",
     "recorded_spa_sales_value",
     "estimated_sold_value",
     "remaining_listed_value",
@@ -61,18 +62,56 @@ def validate_records(records: list[dict[str, Any]]) -> list[dict[str, str]]:
                 )
             )
 
-        for field in ("reported_total_units", "unit_records_count", "sold_units", "unsold_units"):
+        for field in (
+            "reported_total_units",
+            "unit_records_count",
+            "sold_units",
+            "unsold_units",
+            "booked_or_reserved_units",
+            "unknown_sales_status_units",
+            "bumi_total_units",
+            "bumi_sold_units",
+            "bumi_unsold_units",
+        ):
             value = record.get(field)
             if value is not None and int(value) < 0:
                 issues.append(_issue("error", project_id, "negative_count", f"{field} is negative"))
 
-        for field in ("sales_percentage", "construction_percentage"):
+        for field in ("sales_percentage", "construction_percentage", "bumi_sales_percentage"):
             value = record.get(field)
             if value is not None and not (0 <= float(value) <= 100):
                 issues.append(_issue("error", project_id, "percentage_out_of_range", f"{field} is outside 0-100"))
 
         if int(record.get("sold_units") or 0) > int(record.get("comparable_total_units") or 0):
             issues.append(_issue("error", project_id, "sold_exceeds_total", "sold units exceed comparable units"))
+        if int(record.get("bumi_sold_units") or 0) + int(
+            record.get("bumi_unsold_units") or 0
+        ) > int(record.get("bumi_total_units") or 0):
+            issues.append(
+                _issue(
+                    "error",
+                    project_id,
+                    "bumi_sales_exceed_total",
+                    "Bumiputera sold and available units exceed the Bumiputera total",
+                )
+            )
+
+        for field in ("value_sold_percentage", "recorded_price_realisation_percentage"):
+            value = record.get(field)
+            if value is not None and float(value) < 0:
+                issues.append(
+                    _issue("error", project_id, "negative_percentage", f"{field} is negative")
+                )
+        gap = record.get("sales_construction_gap")
+        if gap is not None and not (-100 <= float(gap) <= 100):
+            issues.append(
+                _issue(
+                    "error",
+                    project_id,
+                    "gap_out_of_range",
+                    "sales_construction_gap is outside -100 to 100",
+                )
+            )
 
         for field in MONEY_FIELDS:
             value = record.get(field)

@@ -8,15 +8,16 @@ The shortlist contains the authorized Kuala Lumpur comparison set, one manually 
 
 Double-click `run_dashboard.bat`.
 
-The dashboard opens locally in your browser. Use these tabs:
+The dashboard opens locally in your browser. Its sidebar is organised around the RM workflow:
 
-- **Overview** — Reporting Set changes, current TEDUH exceptions, current metrics, and project details.
-- **All projects** — search and filter every tracked project by name, parent group/developer, region, project set, and TEDUH status.
-- **Shortlist** — review saved-project metadata, persistent refresh status, and run a manual TEDUH refresh.
-- **Add or edit** — add a TEDUH code or change the local display name, parent group, project set, notes, or active flag.
-- **Discovery** — create or reuse a searchable regional TEDUH catalogue. A successful live discovery is limited to once per region per local calendar day.
-- **Alerts** — review business-facing status exceptions, source revisions, data-quality notices, and changes between dated observations.
-- **Audit log** — review project additions and each manually edited field, including who made the change and its previous and new values.
+- **My Portfolio** — attention items, recent movements and the active profile's Reporting Set.
+- **Groups** — roll up every tracked development mapped to the same parent group or registered developer.
+- **Compare** — compare up to six selected projects across sales, value, construction and inventory measures.
+- **Projects** — search and filter the active profile's full Reporting, Comparator and General universe.
+- **Alerts** — review business-facing status, permit, developer, commercial-progress and data-quality exceptions.
+- **Manage** — maintain profiles, tracked projects, Discovery, refresh/data quality and the audit log.
+
+Portfolio profiles are saved working views, not security roles. The Admin / Master Portfolio uses the full tracked-project register; a small Test Portfolio demonstrates a separate project selection and classification without duplicating TEDUH observations.
 
 The dashboard retains a manual refresh button. `run_weekly_refresh.bat` is the safe Monday-oriented scheduler command: it refreshes only when the current Monday-based week has no successful observation. Registering the command with Windows Task Scheduler is a deployment step; the computer must be on and connected when it runs.
 
@@ -33,7 +34,7 @@ Legacy projects are excluded when their first SPA date, or permit start fallback
 
 CCC/CFO obtained remains a Yes/No field. `Yes` is supported by a completed-with-CCC/CFO project status or explicit component evidence. When TEDUH supplies component dates, the project details also show the latest valid CCC/CFO date and VP date separately.
 
-Project details distinguish TEDUH facts, locally maintained fields, application-generated timestamps, and deterministic calculations. Additional collapsible sections show contractual VP changes, component construction, permit/developer licensing, and sales calculated separately for each TEDUH unit group. Neutral component labels are used when TEDUH does not provide a block name.
+Project details distinguish TEDUH facts, locally maintained fields, application-generated timestamps, and deterministic calculations. The first view prioritises unit sales, estimated value sold, construction, latest movement and weekly trends. Additional sections show remaining inventory by type/quota, recorded price realisation, contractual VP changes, component construction, permit/developer licensing, and sales calculated separately for each TEDUH unit group. Neutral component labels are used when TEDUH does not provide a block name. Actual VP remains available in the contractual detail but is not a headline measure unless an exception requires attention.
 
 ## First-time installation
 
