@@ -1,4 +1,5 @@
 from decimal import Decimal
+from statistics import median
 
 import pytest
 
@@ -9,6 +10,7 @@ from teduh_monitor.metrics import (
     component_completion_dates,
     duplicate_unit_count,
     indicative_gdv_range,
+    price_percentile,
     remaining_inventory_summary,
     teduh_spa_price_range,
     weighted_construction,
@@ -138,8 +140,14 @@ def test_sold_count_coverage_and_values() -> None:
     assert result["sales_construction_gap"] == 0.0
     assert result["unit_coverage_percentage"] == 100.0
     assert result["potential_listed_gdv"] == Decimal("220000.00")
+    assert result["average_listed_price_per_unit"] == Decimal("110000.00")
+    assert result["median_listed_price_per_unit"] == Decimal("110000.00")
+    assert result["listed_price_p25"] == Decimal("105000.000")
+    assert result["listed_price_p75"] == Decimal("115000.000")
     assert result["sold_listed_value"] == Decimal("100000.00")
     assert result["recorded_spa_sales_value"] == Decimal("90000.00")
+    assert result["average_recorded_spa_price_per_unit"] == Decimal("90000.00")
+    assert result["median_recorded_spa_price_per_unit"] == Decimal("90000.00")
     assert result["teduh_spa_price_min"] == Decimal("100000")
     assert result["teduh_spa_price_max"] == Decimal("200000")
     assert result["estimated_sold_value"] == Decimal("90000.00")
@@ -149,6 +157,53 @@ def test_sold_count_coverage_and_values() -> None:
     assert result["construction_percentage"] == 50.0
     assert result["recorded_price_realisation_percentage"] == 90.0
     assert result["median_recorded_discount_percentage"] == 10.0
+
+
+def test_price_percentiles_keep_extremes_out_of_the_typical_price() -> None:
+    prices = [
+        Decimal("100000"),
+        Decimal("105000"),
+        Decimal("110000"),
+        Decimal("115000"),
+        Decimal("1000000"),
+    ]
+
+    assert median(prices) == Decimal("110000")
+    assert price_percentile(prices, 0.25) == Decimal("105000")
+    assert price_percentile(prices, 0.75) == Decimal("115000")
+
+
+def test_zero_prices_are_not_treated_as_valid_unit_prices() -> None:
+    units = [
+        {
+            "no": "A-1",
+            "status": "sold",
+            "statusJualan": "Telah Dijual",
+            "hargaJualan": "100000",
+            "hargaSPJB": "0",
+        },
+        {
+            "no": "A-2",
+            "status": "avail",
+            "statusJualan": "Belum Dijual",
+            "hargaJualan": "0",
+        },
+    ]
+    search, detail, payload = project_inputs(units)
+
+    result = calculate_project_metrics(
+        search_project=search,
+        detail=detail,
+        units_payload=payload,
+        city_lookup={},
+        snapshot_date="2026-08-16",
+        source_dataset_as_of="2026-08-15",
+        retrieved_at="2026-08-16T12:00:00+08:00",
+    )
+
+    assert result["priced_unit_records_count"] == 1
+    assert result["median_listed_price_per_unit"] == Decimal("100000")
+    assert result["spa_price_coverage_percentage"] == 0
 
 
 def test_remaining_inventory_groups_type_and_quota() -> None:

@@ -43,6 +43,7 @@ def test_v15_backfill_derives_value_sales_and_progress_gap() -> None:
             {
                 "estimated_sold_value": "40",
                 "potential_listed_gdv": "100",
+                "priced_unit_records_count": "4",
                 "sales_percentage": "60",
                 "construction_percentage": "45",
             }
@@ -51,3 +52,4 @@ def test_v15_backfill_derives_value_sales_and_progress_gap() -> None:
     migrated = backfill_v15_derived_metrics(frame)
     assert migrated.loc[0, "value_sold_percentage"] == 40
     assert migrated.loc[0, "sales_construction_gap"] == 15
+    assert migrated.loc[0, "average_listed_price_per_unit"] == 25

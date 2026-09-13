@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from decimal import Decimal
 from statistics import median
@@ -17,6 +18,20 @@ from .normalize import (
     safe_percentage,
     to_int,
 )
+
+
+def price_percentile(values: list[Decimal], percentile: float) -> Decimal | None:
+    """Return a linearly interpolated percentile for a non-empty price series."""
+    if not values:
+        return None
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * percentile
+    lower_index = math.floor(position)
+    upper_index = math.ceil(position)
+    if lower_index == upper_index:
+        return ordered[lower_index]
+    weight = Decimal(str(position - lower_index))
+    return ordered[lower_index] + (ordered[upper_index] - ordered[lower_index]) * weight
 
 
 def flatten_units(payload: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -341,7 +356,11 @@ def calculate_project_metrics(
         units_payload, reported_total
     )
     unit_count = len(units)
-    priced_units = [unit for unit in units if parse_price(unit.get("hargaJualan")) is not None]
+    priced_units = [
+        unit
+        for unit in units
+        if (price := parse_price(unit.get("hargaJualan"))) is not None and price > 0
+    ]
     classifications = [
         normalize_sales_status(unit.get("statusJualan"), unit.get("status")) for unit in units
     ]
@@ -353,7 +372,11 @@ def calculate_project_metrics(
     comparable_total = sold_units + unsold_units + booked_units
 
     sold_rows = [unit for unit, status_class in zip(units, classifications) if status_class == "sold"]
-    sold_with_spa = [unit for unit in sold_rows if parse_price(unit.get("hargaSPJB")) is not None]
+    sold_with_spa = [
+        unit
+        for unit in sold_rows
+        if (price := parse_price(unit.get("hargaSPJB"))) is not None and price > 0
+    ]
     unit_coverage = safe_percentage(unit_count, reported_total)
     listed_coverage = safe_percentage(len(priced_units), unit_count)
     spa_coverage = safe_percentage(len(sold_with_spa), sold_units)
@@ -367,6 +390,19 @@ def calculate_project_metrics(
     near_listed_coverage = listed_coverage is not None and listed_coverage >= 95
 
     listed_values = [parse_price(unit.get("hargaJualan")) for unit in units]
+    positive_listed_values = [
+        value for value in listed_values if value is not None and value > 0
+    ]
+    average_listed_price_per_unit = (
+        sum(positive_listed_values, Decimal("0")) / len(positive_listed_values)
+        if positive_listed_values
+        else None
+    )
+    median_listed_price_per_unit = (
+        median(positive_listed_values) if positive_listed_values else None
+    )
+    listed_price_p25 = price_percentile(positive_listed_values, 0.25)
+    listed_price_p75 = price_percentile(positive_listed_values, 0.75)
     potential_listed_gdv: Decimal | None = None
     gdv_confidence = "unavailable"
     if units and duplicate_units == 0 and exact_unit_reconciliation and exact_listed_coverage:
@@ -393,7 +429,12 @@ def calculate_project_metrics(
         estimated_sold_value = None
         sold_listed_value = None
     else:
-        spa_values = [parse_price(unit.get("hargaSPJB")) for unit in sold_rows]
+        spa_values = [
+            price
+            if (price := parse_price(unit.get("hargaSPJB"))) is not None and price > 0
+            else None
+            for unit in sold_rows
+        ]
         recorded_spa_sales_value = (
             sum((value for value in spa_values if value is not None), Decimal("0"))
             if any(value is not None for value in spa_values)
@@ -475,7 +516,7 @@ def calculate_project_metrics(
     complete_price_pairs = [
         (listed, spa)
         for listed, spa in price_pairs
-        if listed is not None and listed > 0 and spa is not None
+        if listed is not None and listed > 0 and spa is not None and spa > 0
     ]
     paired_listed_value = sum((listed for listed, _ in complete_price_pairs), Decimal("0"))
     paired_spa_value = sum((spa for _, spa in complete_price_pairs), Decimal("0"))
@@ -490,6 +531,19 @@ def calculate_project_metrics(
     ]
     median_recorded_discount_percentage = (
         round(median(recorded_discounts), 6) if recorded_discounts else None
+    )
+    positive_spa_values = [
+        price
+        for unit in sold_rows
+        if (price := parse_price(unit.get("hargaSPJB"))) is not None and price > 0
+    ]
+    average_recorded_spa_price_per_unit = (
+        sum(positive_spa_values, Decimal("0")) / len(positive_spa_values)
+        if positive_spa_values
+        else None
+    )
+    median_recorded_spa_price_per_unit = (
+        median(positive_spa_values) if positive_spa_values else None
     )
 
     bumi_rows = [unit for unit in units if is_bumi_unit(unit)]
@@ -575,8 +629,14 @@ def calculate_project_metrics(
         "sales_construction_gap": sales_construction_gap,
         "construction_percentage": construction_percentage,
         "potential_listed_gdv": potential_listed_gdv,
+        "average_listed_price_per_unit": average_listed_price_per_unit,
+        "median_listed_price_per_unit": median_listed_price_per_unit,
+        "listed_price_p25": listed_price_p25,
+        "listed_price_p75": listed_price_p75,
         "sold_listed_value": sold_listed_value,
         "recorded_spa_sales_value": recorded_spa_sales_value,
+        "average_recorded_spa_price_per_unit": average_recorded_spa_price_per_unit,
+        "median_recorded_spa_price_per_unit": median_recorded_spa_price_per_unit,
         "estimated_sold_value": estimated_sold_value,
         "remaining_listed_value": remaining_listed_value,
         "recorded_price_realisation_percentage": recorded_price_realisation_percentage,

@@ -43,12 +43,15 @@ state.
 - Active shortlist: 50 projects.
 - Sets: Reporting Set, Comparator Set, and General.
 - RM-first navigation: My Portfolio, Groups, Compare, Projects and Alerts, with
-  maintenance functions grouped separately.
+  visible one-click links and maintenance functions grouped separately.
 - Portfolio profiles reuse one underlying TEDUH dataset. The Admin / Master
   Portfolio retains all tracked projects and a small Test Portfolio is included.
+- Groups, tracked projects and the sidebar project finder provide visible text search.
+- Nearby candidates can be selected for immediate comparison or saved to the
+  active profile's Comparator Set.
 - Current details distinguish TEDUH, local, calculated and application-generated
-  fields. They include unit and value sales, remaining inventory/quota detail,
-  price realisation, overall and component sales, contractual VP changes,
+  fields. They include unit and value sales, robust unit-price measures,
+  remaining inventory/quota detail, price realisation, overall and component sales, contractual VP changes,
   component construction, permit/developer licensing, CCC/CFO, retrieval timing,
   and visible weekly history in a compact hierarchy.
 - The Refresh & data quality page persists the latest refresh outcome and recent run history.

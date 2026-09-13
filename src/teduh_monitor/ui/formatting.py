@@ -6,7 +6,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from ..presentation import translate_teduh_text
+from ..presentation import translate_status_terms, translate_teduh_text
 
 
 REGION_LABELS = {
@@ -100,8 +100,8 @@ def signed_number(
 
 
 def status_change(previous: object, current_value: object) -> str:
-    previous_text = str(previous or "N/A")
-    current_text = str(current_value or "N/A")
+    previous_text = display_text(previous)
+    current_text = display_text(current_value)
     return "No change" if previous_text == current_text else f"{previous_text} → {current_text}"
 
 
@@ -109,6 +109,26 @@ def display_text(value: object) -> str:
     if value in (None, "") or pd.isna(value):
         return "N/A"
     return translate_teduh_text(
+        value,
+        english=st.session_state.get("translate_teduh_values", True),
+    )
+
+
+def status_help(value: object) -> str | None:
+    if not st.session_state.get("translate_teduh_values", True):
+        return None
+    raw = str(value or "").strip()
+    return raw if raw and display_text(raw) != raw else None
+
+
+def status_filter_label(value: object) -> str:
+    raw = str(value or "").strip()
+    translated = display_text(raw)
+    return f"{translated} ({raw})" if translated != raw else translated
+
+
+def display_status_terms(value: object) -> str:
+    return translate_status_terms(
         value,
         english=st.session_state.get("translate_teduh_values", True),
     )

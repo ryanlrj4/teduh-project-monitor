@@ -7,13 +7,20 @@ import streamlit as st
 
 from ..config import Settings
 from ..monitor import snapshot_shortlist
-from ..portfolios import MASTER_PORTFOLIO_ID, save_portfolio
+from ..portfolios import (
+    MASTER_PORTFOLIO_ID,
+    assign_portfolio_projects,
+    save_portfolio,
+)
 from ..presentation import latest_project_changes, present_alert
-from ..shortlist import PROJECT_SETS
+from ..shortlist import PROJECT_SETS, upsert_shortlist_project
 from .components import render_project_details, render_refresh_status_panel
 from .formatting import (
     display_text,
+    display_status_terms,
+    display_date,
     money,
+    numeric_range,
     pct,
     region_label,
     signed_number,
@@ -56,19 +63,22 @@ def _portfolio_table(view: pd.DataFrame, *, key: str):
     table["Unit sales"] = table["sales_percentage"].map(pct)
     table["Value sold"] = table["value_sold_percentage"].map(pct)
     table["Construction"] = table["construction_percentage"].map(pct)
+    table["Typical price"] = table["median_listed_price_per_unit"].map(money)
     table["Remaining value"] = table["remaining_listed_value"].map(money)
+    table["TEDUH status"] = table["project_status"].map(display_text)
     event = st.dataframe(
         table[
             [
                 "display_name",
                 "Group / developer",
                 "Region",
-                "project_status",
+                "TEDUH status",
                 "Sold",
                 "Units",
                 "Unit sales",
                 "Value sold",
                 "Construction",
+                "Typical price",
                 "Remaining value",
             ]
         ],
@@ -80,7 +90,6 @@ def _portfolio_table(view: pd.DataFrame, *, key: str):
         selection_default={"selection": {"rows": [0]}},
         column_config={
             "display_name": "Project",
-            "project_status": "TEDUH status",
         },
     )
     return table, event
@@ -95,7 +104,6 @@ def render_my_portfolio(
     on_view_group=None,
 ) -> None:
     st.subheader("My Portfolio")
-    st.caption(f"Active profile: {portfolio_name}. The home view prioritises its Reporting Set.")
     if current.empty:
         st.info("This profile has no projects. Add projects from Manage → Profiles.")
         return
@@ -145,7 +153,9 @@ def render_my_portfolio(
             {
                 "Level": str(row.get("alert_level")),
                 "Project": str(row.get("display_name") or row.get("source_project_id")),
-                "Reason": str(row.get("message") or row.get("alert_label")),
+                "Reason": display_status_terms(
+                    row.get("message") or row.get("alert_label")
+                ),
             }
         )
     if attention_rows:
@@ -199,8 +209,7 @@ def render_groups(
     requested_group: str | None = None,
     on_view_group=None,
 ) -> None:
-    st.subheader("Developer groups")
-    st.caption("Review all tracked developments linked to the same locally maintained parent group.")
+    st.subheader("Tracked groups")
     if current.empty:
         st.info("No projects are available in this profile.")
         return
@@ -209,7 +218,28 @@ def render_groups(
         lambda row: row.get("parent_group") or row.get("developer_name") or "Unmapped",
         axis=1,
     )
-    group_names = sorted(groups["group_name"].dropna().astype(str).unique(), key=str.casefold)
+    group_query = st.text_input(
+        "Search groups or projects",
+        placeholder="Parent group, developer, SPV or project",
+        key="group_search",
+    )
+    matching_groups = groups
+    if group_query.strip():
+        needle = group_query.strip().casefold()
+        matching_groups = groups[
+            groups[
+                ["group_name", "developer_name", "display_name", "project_name"]
+            ]
+            .fillna("")
+            .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
+        ]
+    group_names = sorted(
+        matching_groups["group_name"].dropna().astype(str).unique(),
+        key=str.casefold,
+    )
+    if not group_names:
+        st.info("No groups or projects match the search.")
+        return
     initial = group_names.index(requested_group) if requested_group in group_names else 0
     selected_group = st.selectbox("Parent group / developer", group_names, index=initial)
     view = groups[groups["group_name"] == selected_group].copy()
@@ -240,81 +270,232 @@ def render_groups(
         )
 
 
-def render_compare(current: pd.DataFrame, history: pd.DataFrame, *, on_view_group=None) -> None:
+def render_compare(
+    profile_current: pd.DataFrame,
+    all_current: pd.DataFrame,
+    *,
+    settings: Settings,
+    active_portfolio_id: str,
+    memberships: list[dict[str, str]],
+    shortlist_rows: list[dict[str, str]],
+    on_open_project=None,
+) -> None:
     st.subheader("Compare projects")
-    st.caption("Place Reporting, Comparator and General projects side by side using the same TEDUH-derived measures.")
-    if current.empty:
+    if profile_current.empty or all_current.empty:
         st.info("No projects are available in this profile.")
         return
-    options = current.sort_values(["project_set", "display_name"]).copy()
+    options = all_current.sort_values(["project_set", "display_name"]).copy()
+    if active_portfolio_id == MASTER_PORTFOLIO_ID:
+        active_sets = {
+            str(row["source_project_id"]): str(row.get("project_set") or "general")
+            for _, row in all_current.iterrows()
+        }
+    else:
+        active_sets = {
+            row["source_project_id"]: row["project_set"]
+            for row in memberships
+            if row["portfolio_id"] == active_portfolio_id
+        }
     label_by_code = {
         str(row["source_project_id"]): (
             f"{row.get('display_name') or row.get('project_name')} · "
-            f"{SET_LABELS.get(row.get('project_set'), row.get('project_set'))}"
+            f"{SET_LABELS.get(active_sets.get(str(row['source_project_id'])), 'Not in profile')}"
         )
         for _, row in options.iterrows()
     }
-    located = options.dropna(subset=["latitude", "longitude"]).copy()
-    if len(located) > 1:
-        with st.expander("Nearby comparator candidates"):
-            anchor_code = st.selectbox(
-                "Anchor project",
-                list(located["source_project_id"].astype(str)),
-                format_func=lambda code: label_by_code[code],
-                key="comparison_anchor",
-            )
-            radius = st.slider("Distance radius (km)", 1, 30, 10)
-            anchor = located[located["source_project_id"].astype(str) == anchor_code].iloc[0]
-            candidates = located[
-                located["source_project_id"].astype(str) != anchor_code
-            ].copy()
-            candidates["Distance"] = candidates.apply(
-                lambda row: _distance_km(
-                    float(anchor["latitude"]),
-                    float(anchor["longitude"]),
-                    float(row["latitude"]),
-                    float(row["longitude"]),
-                ),
-                axis=1,
-            )
-            candidates = candidates[candidates["Distance"] <= radius].sort_values("Distance")
-            if candidates.empty:
-                st.info(f"No other profile projects have TEDUH coordinates within {radius} km.")
-            else:
-                candidates["Project"] = candidates["display_name"].fillna(candidates["project_name"])
-                candidates["Set"] = candidates["project_set"].map(SET_LABELS)
-                candidates["Distance"] = candidates["Distance"].map(lambda value: f"{value:.1f} km")
-                candidates["Unit sales"] = candidates["sales_percentage"].map(pct)
-                candidates["Construction"] = candidates["construction_percentage"].map(pct)
-                st.dataframe(
-                    candidates[["Project", "Set", "Distance", "Unit sales", "Construction"]].head(12),
-                    hide_index=True,
-                    width="stretch",
-                )
-                st.caption(
-                    "Distance uses TEDUH coordinates only. Geographic proximity is a starting point; the RM still decides whether a project is genuinely comparable."
-                )
+
     reporting_codes = list(
-        options.loc[options["project_set"] == "reporting_set", "source_project_id"].astype(str)
+        profile_current.loc[
+            profile_current["project_set"] == "reporting_set", "source_project_id"
+        ].astype(str)
     )
     default_codes = reporting_codes[:1]
     comparator_codes = list(
-        options.loc[options["project_set"] == "comparator_set", "source_project_id"].astype(str)
+        profile_current.loc[
+            profile_current["project_set"] == "comparator_set", "source_project_id"
+        ].astype(str)
     )
     default_codes.extend(comparator_codes[: max(0, 3 - len(default_codes))])
+    valid_codes = set(options["source_project_id"].astype(str))
+    comparison_key = f"comparison_projects_{active_portfolio_id}"
+    comparison_state = [
+        code
+        for code in st.session_state.get(comparison_key, default_codes)
+        if code in valid_codes
+    ]
+    st.session_state[comparison_key] = comparison_state or default_codes
+
+    st.markdown("#### Nearby comparator candidates")
+    located_anchors = profile_current.dropna(subset=["latitude", "longitude"]).copy()
+    located_candidates = options.dropna(subset=["latitude", "longitude"]).copy()
+    if located_anchors.empty or len(located_candidates) < 2:
+        st.info("Coordinates are unavailable for comparison.")
+    else:
+        anchor_code = st.selectbox(
+            "Anchor project",
+            list(located_anchors["source_project_id"].astype(str)),
+            format_func=lambda code: label_by_code[code],
+            key=f"comparison_anchor_{active_portfolio_id}",
+        )
+        radius = st.slider(
+            "Distance radius (km)",
+            1,
+            30,
+            10,
+            key=f"comparison_radius_{active_portfolio_id}",
+        )
+        anchor = located_anchors[
+            located_anchors["source_project_id"].astype(str) == anchor_code
+        ].iloc[0]
+        candidates = located_candidates[
+            located_candidates["source_project_id"].astype(str) != anchor_code
+        ].copy()
+        candidates["distance_km"] = candidates.apply(
+            lambda row: _distance_km(
+                float(anchor["latitude"]),
+                float(anchor["longitude"]),
+                float(row["latitude"]),
+                float(row["longitude"]),
+            ),
+            axis=1,
+        )
+        candidates = candidates[candidates["distance_km"] <= radius].sort_values(
+            "distance_km"
+        ).reset_index(drop=True)
+        if candidates.empty:
+            st.info(f"No tracked projects are within {radius} km.")
+        else:
+            candidates["Project"] = candidates["display_name"].fillna(
+                candidates["project_name"]
+            )
+            candidates["Group / developer"] = candidates.apply(
+                lambda row: row.get("parent_group") or row.get("developer_name") or "N/A",
+                axis=1,
+            )
+            candidates["Set"] = candidates["source_project_id"].astype(str).map(
+                lambda code: SET_LABELS.get(active_sets.get(code), "Not in profile")
+            )
+            candidates["Distance"] = candidates["distance_km"].map(
+                lambda value: f"{value:.1f} km"
+            )
+            candidates["Status"] = candidates["project_status"].map(display_text)
+            candidates["Units"] = candidates["reported_total_units"].map(whole_number)
+            candidates["Potential GDV"] = candidates["potential_listed_gdv"].map(money)
+            candidates["Average unit price"] = candidates[
+                "average_listed_price_per_unit"
+            ].map(money)
+            candidates["Typical unit price"] = candidates[
+                "median_listed_price_per_unit"
+            ].map(money)
+            candidates["Typical price range"] = candidates.apply(
+                lambda row: numeric_range(
+                    row.get("listed_price_p25"), row.get("listed_price_p75"), prefix="RM "
+                ),
+                axis=1,
+            )
+            candidates["Unit sales"] = candidates["sales_percentage"].map(pct)
+            candidates["Value sold"] = candidates["value_sold_percentage"].map(pct)
+            candidates["Construction"] = candidates["construction_percentage"].map(pct)
+            candidates["First SPA"] = candidates["first_spa_date"].map(display_date)
+            candidate_event = st.dataframe(
+                candidates[
+                    [
+                        "Project",
+                        "Group / developer",
+                        "Set",
+                        "Distance",
+                        "Status",
+                        "Units",
+                        "Potential GDV",
+                        "Average unit price",
+                        "Typical unit price",
+                        "Typical price range",
+                        "Unit sales",
+                        "Value sold",
+                        "Construction",
+                        "First SPA",
+                    ]
+                ],
+                hide_index=True,
+                width="stretch",
+                on_select="rerun",
+                selection_mode="multi-row",
+                key=f"nearby_comparator_candidates_{active_portfolio_id}",
+            )
+            candidate_codes = [
+                str(candidates.iloc[index]["source_project_id"])
+                for index in candidate_event.selection.rows
+            ]
+            actor = ""
+            if active_portfolio_id == MASTER_PORTFOLIO_ID and candidate_codes:
+                actor = st.text_input(
+                    "Changed by",
+                    value=st.session_state.get("audit_actor", ""),
+                    key="comparison_changed_by",
+                )
+            compare_action, save_action = st.columns(2)
+            if compare_action.button(
+                "Compare selected",
+                disabled=not candidate_codes,
+                width="stretch",
+            ):
+                st.session_state[comparison_key] = list(
+                    dict.fromkeys([anchor_code, *candidate_codes])
+                )[:6]
+                st.rerun()
+
+            if save_action.button(
+                "Save to Comparator Set",
+                disabled=not candidate_codes,
+                width="stretch",
+            ):
+                if active_portfolio_id == MASTER_PORTFOLIO_ID and not actor.strip():
+                    st.error("Enter your name or initials.")
+                else:
+                    if active_portfolio_id == MASTER_PORTFOLIO_ID:
+                        shortlist_by_code = {
+                            row["source_project_id"]: row for row in shortlist_rows
+                        }
+                        for code in candidate_codes:
+                            upsert_shortlist_project(
+                                settings,
+                                {
+                                    **shortlist_by_code[code],
+                                    "project_set": "comparator_set",
+                                },
+                                changed_by=actor,
+                            )
+                        st.session_state["audit_actor"] = actor.strip()
+                    else:
+                        assign_portfolio_projects(
+                            settings,
+                            portfolio_id=active_portfolio_id,
+                            project_codes=candidate_codes,
+                            project_set="comparator_set",
+                        )
+                    st.session_state["app_notice"] = (
+                        f"Saved {len(candidate_codes):,} project(s) to the Comparator Set."
+                    )
+                    st.rerun()
+
+    st.markdown("#### Side-by-side comparison")
     selected_codes = st.multiselect(
         "Projects (up to 6)",
         list(label_by_code),
-        default=default_codes,
         format_func=lambda code: label_by_code[code],
         max_selections=6,
+        key=comparison_key,
     )
     if not selected_codes:
         st.info("Choose at least one project to compare.")
         return
     selected = options[options["source_project_id"].astype(str).isin(selected_codes)].copy()
     selected["Project"] = selected["display_name"].fillna(selected["project_name"])
-    selected["Set"] = selected["project_set"].map(SET_LABELS)
+    selected["Set"] = selected["source_project_id"].astype(str).map(
+        lambda code: SET_LABELS.get(active_sets.get(code), "Not in profile")
+    )
+    selected["Status"] = selected["project_status"].map(display_text)
+    selected["Units"] = selected["reported_total_units"].map(whole_number)
     selected["Unit sales"] = selected["sales_percentage"].map(pct)
     selected["Value sold"] = selected["value_sold_percentage"].map(pct)
     selected["Construction"] = selected["construction_percentage"].map(pct)
@@ -322,6 +503,23 @@ def render_compare(current: pd.DataFrame, history: pd.DataFrame, *, on_view_grou
         lambda value: signed_number(value, decimals=1, suffix=" pp")
     )
     selected["Potential GDV"] = selected["potential_listed_gdv"].map(money)
+    selected["Typical unit price"] = selected["median_listed_price_per_unit"].map(money)
+    selected["Average listed price"] = selected[
+        "average_listed_price_per_unit"
+    ].map(money)
+    selected["Typical price range"] = selected.apply(
+        lambda row: numeric_range(
+            row.get("listed_price_p25"), row.get("listed_price_p75"), prefix="RM "
+        ),
+        axis=1,
+    )
+    selected["Typical recorded SPA"] = selected[
+        "median_recorded_spa_price_per_unit"
+    ].map(money)
+    selected["Average recorded SPA"] = selected[
+        "average_recorded_spa_price_per_unit"
+    ].map(money)
+    selected["SPA price coverage"] = selected["spa_price_coverage_percentage"].map(pct)
     selected["Remaining value"] = selected["remaining_listed_value"].map(money)
     selected["Bumi sales"] = selected["bumi_sales_percentage"].map(pct)
     st.dataframe(
@@ -329,33 +527,34 @@ def render_compare(current: pd.DataFrame, history: pd.DataFrame, *, on_view_grou
             [
                 "Project",
                 "Set",
-                "project_status",
+                "Status",
+                "Units",
+                "Potential GDV",
+                "Typical unit price",
+                "Typical price range",
+                "Average listed price",
+                "Typical recorded SPA",
+                "Average recorded SPA",
+                "SPA price coverage",
                 "Unit sales",
                 "Value sold",
                 "Construction",
                 "Sales vs construction",
-                "Potential GDV",
                 "Remaining value",
                 "Bumi sales",
             ]
         ],
         hide_index=True,
         width="stretch",
-        column_config={"project_status": "TEDUH status"},
     )
-    detail_code = st.selectbox(
-        "Open full details",
-        selected_codes,
-        format_func=lambda code: label_by_code[code],
-    )
-    detail = selected[selected["source_project_id"].astype(str) == detail_code].iloc[0]
-    render_project_details(
-        detail,
-        history,
-        container_key="compare_project_detail",
-        manual_container_key="compare_project_manual",
-        on_view_group=on_view_group,
-    )
+    if on_open_project is not None:
+        detail_code = st.selectbox(
+            "Project details",
+            selected_codes,
+            format_func=lambda code: label_by_code[code],
+        )
+        if st.button("Open in Projects"):
+            on_open_project(detail_code)
 
 
 def render_profiles(
@@ -366,9 +565,7 @@ def render_profiles(
     registry_name_by_code: dict[str, str],
 ) -> None:
     st.subheader("Portfolio profiles")
-    st.caption(
-        "Profiles are saved project views, not access-control roles. TEDUH observations are stored once and reused across profiles."
-    )
+    st.caption("Profiles are saved views; they do not control access.")
     profile_frame = pd.DataFrame(portfolios)
     st.dataframe(
         profile_frame[["portfolio_name", "description", "active"]],
@@ -456,9 +653,6 @@ def render_profiles(
 
 def render_refresh_and_data_quality(settings: Settings) -> None:
     st.subheader("Refresh & data quality")
-    st.caption(
-        "Refreshes all active tracked projects once, validates the complete result, and preserves the previous valid snapshot if publication fails."
-    )
     render_refresh_status_panel(settings)
     if not st.button("Refresh TEDUH projects", type="primary"):
         return

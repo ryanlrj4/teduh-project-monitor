@@ -75,7 +75,7 @@ These fields are entered locally and are not claimed to come from TEDUH.
 |---|---|---|---|---|
 | `unitSummary.unit` | `reported_total_units` | integer | Project-level unit total reported by TEDUH | Retain null |
 | Count of `unitGroups[].units[]` | `unit_records_count` | integer | Individual unit rows received | Zero remains zero and is investigated |
-| Parseable `hargaJualan` count | `priced_unit_records_count` | integer | Unit rows with listed prices | Count only parseable values |
+| Positive parseable `hargaJualan` count | `priced_unit_records_count` | integer | Unit rows with valid listed prices | Zero, blank and malformed prices excluded |
 | `statusJualan` with `status` fallback | `sold_units`, `unsold_units` | integer | User-facing counts using the controlled mapping | Missing unit endpoints do not become business facts |
 | Each `unitGroups[]` collection | `component_sales_json` | JSON text | Per-component sold, unsold, total, calculated sales percentage, source component ID and property type | Neutral component label used when no block name is supplied |
 | Component summary checks | `component_sales_count`, `component_sales_confidence`, `component_sales_note` | integer/text | Group count and reconciliation outcome for component sales | Note explains withheld or low-confidence data |
@@ -85,8 +85,13 @@ These fields are entered locally and are not claimed to come from TEDUH.
 | Estimated sold value / potential listed GDV | `value_sold_percentage` | decimal percent | Estimated share of potential listed value sold | Null unless both value measures pass coverage checks |
 | Unit sales % − construction % | `sales_construction_gap` | decimal percentage points | Directional sales-versus-delivery monitoring signal | Null if either percentage is unavailable |
 | Sum of qualifying `hargaJualan` | `potential_listed_gdv` | decimal RM | Potential listed value under coverage rules | Withheld when rules fail |
+| Mean valid `hargaJualan` | `average_listed_price_per_unit` | decimal RM | Average listed price per priced unit | Null when no valid listed prices exist |
+| Median valid `hargaJualan` | `median_listed_price_per_unit` | decimal RM | Typical listed unit price, robust to extreme units | Null when no valid listed prices exist |
+| 25th/75th percentiles of valid `hargaJualan` | `listed_price_p25`, `listed_price_p75` | decimal RM | Middle 50% listed unit-price range | Null when no valid listed prices exist |
 | Sold `hargaJualan` | `sold_listed_value` | decimal RM | Listed value associated with sold units | Null if any sold unit lacks listed price |
 | Sold `hargaSPJB` | `recorded_spa_sales_value` | decimal RM | Sum of recorded sold-unit SPA prices | Null if sold units exist but none has SPA price |
+| Mean valid sold-unit `hargaSPJB` | `average_recorded_spa_price_per_unit` | decimal RM | Average recorded SPA price per priced sold unit | Null when no sold unit has a valid SPA price |
+| Median valid sold-unit `hargaSPJB` | `median_recorded_spa_price_per_unit` | decimal RM | Typical recorded SPA price per sold unit | Null when no sold unit has a valid SPA price |
 | Sold `COALESCE(hargaSPJB,hargaJualan)` | `estimated_sold_value` | decimal RM | Disclosed estimate using listed price fallback | Null if a sold unit has neither price |
 | Non-sold `hargaJualan` | `remaining_listed_value` | decimal RM | Listed value of unsold/booked/reserved units | Withheld when coverage fails |
 | Paired sold-unit SPA / listed values | `recorded_price_realisation_percentage` | decimal percent | Recorded SPA value as a share of listed value for paired records | Null when no valid pair exists |

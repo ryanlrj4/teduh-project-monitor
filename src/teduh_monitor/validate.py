@@ -9,8 +9,14 @@ from .config import HIMS_UNIT_DATA_START_ISO
 
 MONEY_FIELDS = (
     "potential_listed_gdv",
+    "average_listed_price_per_unit",
+    "median_listed_price_per_unit",
+    "listed_price_p25",
+    "listed_price_p75",
     "sold_listed_value",
     "recorded_spa_sales_value",
+    "average_recorded_spa_price_per_unit",
+    "median_recorded_spa_price_per_unit",
     "estimated_sold_value",
     "remaining_listed_value",
     "minimum_indicative_gdv",

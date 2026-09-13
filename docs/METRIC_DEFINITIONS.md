@@ -53,6 +53,20 @@ potential_listed_gdv = sum(hargaJualan for observed units)
 
 This is potential listed GDV, not audited revenue or official developer GDV. A medium value remains the sum of observed prices and is not silently grossed up.
 
+## Unit pricing
+
+Only positive, parseable prices are included.
+
+```text
+average_listed_price_per_unit = mean(valid hargaJualan)
+median_listed_price_per_unit = median(valid hargaJualan)
+listed_price_p25 / listed_price_p75 = interpolated 25th / 75th percentiles
+average_recorded_spa_price_per_unit = mean(valid sold-unit hargaSPJB)
+median_recorded_spa_price_per_unit = median(valid sold-unit hargaSPJB)
+```
+
+The median listed price is the primary typical-unit measure. The 25th–75th percentile range describes the middle half of the project without removing high- or low-priced units from potential listed GDV. Recorded-SPA measures remain subject to `spa_price_coverage_percentage`.
+
 ## Recorded SPA sales value
 
 ```text

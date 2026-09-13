@@ -30,6 +30,7 @@ def test_dataframe_adds_default_region_and_converts_numeric_columns() -> None:
                 "source_project_id": "100-1",
                 "sold_units": "42",
                 "sales_percentage": "6.9",
+                "median_listed_price_per_unit": "450000",
                 "latitude": "3.1390",
                 "longitude": "101.6869",
             }
@@ -39,6 +40,7 @@ def test_dataframe_adds_default_region_and_converts_numeric_columns() -> None:
     assert frame.loc[0, "region"] == "Kuala Lumpur"
     assert frame.loc[0, "sold_units"] == 42
     assert frame.loc[0, "sales_percentage"] == 6.9
+    assert frame.loc[0, "median_listed_price_per_unit"] == 450000
     assert frame.loc[0, "latitude"] == 3.139
 
 

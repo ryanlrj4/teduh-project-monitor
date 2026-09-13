@@ -14,10 +14,12 @@ from .workspace_pages import render_refresh_and_data_quality
 from .formatting import (
     display_date,
     display_text,
+    display_status_terms,
     display_timestamp,
     money,
     pct,
     region_label,
+    status_filter_label,
     whole_number,
 )
 
@@ -36,7 +38,6 @@ def render_all_projects(
     on_view_group=None,
 ) -> None:
     st.subheader("All tracked projects")
-    st.caption("Search and filter the complete Reporting Set, Comparator Set and General project universe.")
     if current.empty:
         st.info("Refresh the shortlist to populate current TEDUH metrics.")
     else:
@@ -72,6 +73,7 @@ def render_all_projects(
         status_filter = filter_status.multiselect(
             "TEDUH status",
             available_statuses,
+            format_func=status_filter_label,
             key="all_projects_status",
         )
         all_view = current.copy()
@@ -114,7 +116,11 @@ def render_all_projects(
             all_view["sales_display"] = all_view["sales_percentage"].map(pct)
             all_view["construction_display"] = all_view["construction_percentage"].map(pct)
             all_view["potential_gdv_display"] = all_view["potential_listed_gdv"].map(money)
-            set_order = {"reporting_set": 0, "general": 1, "comparator_set": 2}
+            all_view["typical_price_display"] = all_view[
+                "median_listed_price_per_unit"
+            ].map(money)
+            all_view["status_display"] = all_view["project_status"].map(display_text)
+            set_order = {"reporting_set": 0, "comparator_set": 1, "general": 2}
             all_view["_set_rank"] = all_view["project_set"].map(set_order).fillna(9)
             all_view = all_view.sort_values(["_set_rank", "display_name"]).reset_index(drop=True)
             all_projects_event = st.dataframe(
@@ -123,12 +129,13 @@ def render_all_projects(
                         "display_name",
                         "developer_or_parent_group",
                         "region_display",
-                        "project_status",
+                        "status_display",
                         "sold_display",
                         "units_display",
                         "sales_display",
                         "construction_display",
                         "potential_gdv_display",
+                        "typical_price_display",
                         "project_set_display",
                     ]
                 ],
@@ -142,12 +149,13 @@ def render_all_projects(
                     "display_name": "Project",
                     "developer_or_parent_group": "Parent group / developer",
                     "region_display": "Region",
-                    "project_status": "TEDUH status",
+                    "status_display": "TEDUH status",
                     "sold_display": "Sold",
                     "units_display": "Units",
                     "sales_display": "Sales",
                     "construction_display": "Construction",
                     "potential_gdv_display": "Potential GDV",
+                    "typical_price_display": "Typical unit price",
                     "project_set_display": "Project set",
                 },
             )
@@ -171,16 +179,20 @@ def render_shortlist(
     *,
     include_refresh: bool = True,
 ) -> None:
-    st.subheader("Saved projects")
-    st.caption(
-        "The display name, parent group, project set and notes are yours to edit. "
-        "The weekly collection target is Monday, and manual refresh remains available."
-    )
+    st.subheader("Tracked projects")
 
     shortlist_frame = pd.DataFrame(shortlist_rows)
     if shortlist_frame.empty:
         st.warning("No shortlist projects have been added.")
     else:
+        shortlist_frame["registry_name"] = shortlist_frame["source_project_id"].map(
+            registry_name_by_code
+        )
+        shortlist_search = st.text_input(
+            "Search tracked projects",
+            placeholder="Project, TEDUH code or parent group",
+            key="shortlist_search",
+        )
         watch_regions = ["All regions"] + list(REGION_CONFIGS)
         watch_region = st.radio(
             "Region",
@@ -191,6 +203,21 @@ def render_shortlist(
         )
         if watch_region != "All regions":
             shortlist_frame = shortlist_frame[shortlist_frame["region"] == watch_region]
+        if shortlist_search.strip():
+            needle = shortlist_search.strip().casefold()
+            shortlist_frame = shortlist_frame[
+                shortlist_frame[
+                    [
+                        "source_project_id",
+                        "display_name",
+                        "registry_name",
+                        "parent_group",
+                        "tracking_notes",
+                    ]
+                ]
+                .fillna("")
+                .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
+            ]
         shortlist_frame["project_set"] = shortlist_frame["project_set"].map(SET_LABELS).fillna(shortlist_frame["project_set"])
         shortlist_frame["region_display"] = shortlist_frame["region"].map(region_label)
         shortlist_frame["display_name"] = shortlist_frame.apply(
@@ -199,6 +226,7 @@ def render_shortlist(
             or "TEDUH name will appear after refresh",
             axis=1,
         )
+        st.caption(f"Showing {len(shortlist_frame):,} tracked projects")
         st.dataframe(
             shortlist_frame[
                 ["source_project_id", "region_display", "display_name", "parent_group", "project_set", "active", "tracking_notes"]
@@ -263,9 +291,7 @@ def render_add_or_edit(
             format_func=lambda value: SET_LABELS[value],
         )
         st.markdown("**Optional manually entered project details**")
-        st.caption(
-            "Leave these blank to hide them from project details. Use YYYY-MM-DD for the optional launch date."
-        )
+        st.caption("Leave blank to hide; dates use YYYY-MM-DD.")
         manual_launch_date = st.text_input(
             "Launch date (optional)",
             value=default.get("manual_launch_date", ""),
@@ -285,7 +311,7 @@ def render_add_or_edit(
         psf_max = manual_psf_high.text_input(
             "PSF maximum (RM/sqft)", value=default.get("manual_psf_max", "")
         )
-        notes = st.text_area("Your monitoring notes", value=default.get("tracking_notes", ""), help="This is your own internal note; no CHGP analyst notes are imported.")
+        notes = st.text_area("Your monitoring notes", value=default.get("tracking_notes", ""))
         active = st.checkbox("Actively refresh this project", value=default.get("active", "Yes") == "Yes")
         changed_by = st.text_input(
             "Changed by (name or initials)",
@@ -320,15 +346,7 @@ def render_add_or_edit(
                     changed_by=changed_by,
                 )
                 st.session_state["audit_actor"] = changed_by.strip()
-                st.session_state["app_notice"] = (
-                    f"Saved TEDUH project {code}. "
-                    + (
-                        f'The dashboard will show your name “{display_name}”.'
-                        if display_name.strip()
-                        else "TEDUH's registered project name will be used after refresh."
-                    )
-                    + " Manual fields appear immediately; refresh the shortlist only when you want current TEDUH metrics."
-                )
+                st.session_state["app_notice"] = f"Saved TEDUH project {code}."
                 st.rerun()
             except ValueError as exc:
                 st.error(str(exc))
@@ -340,7 +358,7 @@ def render_discovery(
     shortlist_rows: list[dict[str, str]],
 ) -> None:
     st.subheader("On-demand regional discovery")
-    st.caption("Discovery can make at most one live catalogue request set per region each day. A second run reuses that region's same-day cache.")
+    st.caption("One live catalogue request per region daily; later runs reuse the cache.")
     discovery_region = st.selectbox(
         "Region", list(REGION_CONFIGS), key="discovery_region", format_func=region_label
     )
@@ -450,12 +468,21 @@ def render_alerts(
     shortlist_by_project: dict[str, dict[str, str]],
 ) -> None:
     st.subheader("Monitoring alerts")
-    st.caption("Current TEDUH status exceptions appear immediately. Change-based alerts become available after at least two dated observations.")
     if not alert_rows:
         st.info("No alerts are available yet. Refresh the shortlist to create an observation.")
     else:
         alert_level_order = {"Critical": 0, "High": 1, "Review": 2, "Notice": 3}
         alerts = pd.DataFrame([present_alert(row) for row in alert_rows])
+        alerts["message"] = alerts["message"].map(display_status_terms)
+        status_alert_terms = {
+            "status_sakit": "Sakit",
+            "status_lewat": "Lewat",
+            "permit_cancelled": "Batal",
+        }
+        for alert_code, source_term in status_alert_terms.items():
+            alerts.loc[alerts["alert_code"] == alert_code, "alert_label"] = (
+                f"{display_text(source_term)} status"
+            )
         if "region" not in alerts.columns:
             alerts["region"] = DEFAULT_REGION
         alert_region = st.radio(
@@ -514,10 +541,7 @@ def render_audit_log(
     registry_name_by_code: dict[str, str],
 ) -> None:
     st.subheader("Project audit log")
-    st.caption(
-        "Records project additions and field-by-field manual edits from this version onward. "
-        "TEDUH data refreshes do not create manual-change entries."
-    )
+    st.caption("Manual project changes only; TEDUH refreshes are excluded.")
     if not audit_rows:
         st.info("No audited changes have been recorded yet. Earlier project history has not been reconstructed.")
     else:

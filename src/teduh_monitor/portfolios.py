@@ -181,3 +181,37 @@ def save_portfolio(
         portfolio_memberships_path(settings), memberships, list(MEMBERSHIP_FIELDS)
     )
     return new_id
+
+
+def assign_portfolio_projects(
+    settings: Settings,
+    *,
+    portfolio_id: str,
+    project_codes: list[str],
+    project_set: str,
+) -> None:
+    if portfolio_id == MASTER_PORTFOLIO_ID:
+        raise ValueError("Master project classifications belong to the tracked-project register")
+    if project_set not in PROJECT_SETS:
+        raise ValueError(f"Invalid project set: {project_set}")
+
+    memberships = load_portfolio_memberships(settings)
+    assignments = {
+        (row["portfolio_id"], row["source_project_id"]): row
+        for row in memberships
+    }
+    for code in project_codes:
+        project_code = str(code).strip()
+        if project_code:
+            assignments[(portfolio_id, project_code)] = {
+                "portfolio_id": portfolio_id,
+                "source_project_id": project_code,
+                "project_set": project_set,
+            }
+    updated = sorted(
+        assignments.values(),
+        key=lambda row: (row["portfolio_id"], row["project_set"], row["source_project_id"]),
+    )
+    atomic_write_csv(
+        portfolio_memberships_path(settings), updated, list(MEMBERSHIP_FIELDS)
+    )

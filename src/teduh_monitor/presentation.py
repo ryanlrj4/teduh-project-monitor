@@ -23,7 +23,18 @@ ALERT_PRESENTATION = {
     "sales_lags_construction": ("Sales lag construction", "Commercial progress", "Review"),
 }
 
+TEDUH_STATUS_LABELS = {
+    "Belum Mula": "Not Started",
+    "Lancar": "On Track",
+    "Lewat": "Delayed",
+    "Sakit": "Distressed",
+    "Siap Dengan CCC": "Completed with CCC",
+    "Siap Dengan CFO": "Completed with CFO",
+    "Batal": "Cancelled",
+}
+
 TEDUH_ENGLISH_LABELS = {
+    **{source.casefold(): translated for source, translated in TEDUH_STATUS_LABELS.items()},
     "aktif": "Active",
     "tidak aktif": "Inactive",
     "berfasa": "Phased development",
@@ -55,6 +66,15 @@ def translate_teduh_text(value: object, *, english: bool) -> str:
         amount = period.group(1)
         unit = "month" if amount in {"1", "1.0"} else "months"
         return f"{amount} {unit}"
+    return text
+
+
+def translate_status_terms(value: object, *, english: bool) -> str:
+    text = str(value)
+    if not english:
+        return text
+    for source, translated in TEDUH_STATUS_LABELS.items():
+        text = re.sub(re.escape(source), translated, text, flags=re.IGNORECASE)
     return text
 
 

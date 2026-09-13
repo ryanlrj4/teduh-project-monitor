@@ -19,6 +19,7 @@ from .formatting import (
     region_label,
     signed_number,
     source_money,
+    status_help,
     status_change,
     whole_number,
 )
@@ -36,7 +37,6 @@ def render_project_map(selected: pd.Series) -> None:
     ):
         st.markdown("**Coordinates · TEDUH**")
         st.write("N/A")
-        st.caption("TEDUH does not provide valid coordinates for this project.")
         return
 
     st.markdown("**Project marker · TEDUH**")
@@ -47,9 +47,6 @@ def render_project_map(selected: pd.Series) -> None:
         longitude="longitude",
         zoom=15,
         height=280,
-    )
-    st.caption(
-        "The marker uses TEDUH-reported coordinates and may represent an approximate project location rather than a verified site boundary."
     )
 
 
@@ -75,20 +72,14 @@ def render_refresh_status_panel(settings: Settings) -> None:
         st.warning(f"Refresh status: {state}")
 
     summary = st.columns(4)
-    summary[0].metric(
-        "Last run",
-        state.title(),
-        help="Application-generated status for the most recent refresh attempt.",
-    )
+    summary[0].metric("Last run", state.title())
     summary[1].metric(
         "Projects reviewed",
         f"{completed:,} / {total:,}",
-        help="Application-generated count of active shortlist projects reviewed in the run.",
     )
     summary[2].metric(
         "Duration",
         display_duration(status.get("duration_seconds")),
-        help="Application-generated elapsed time for the refresh attempt.",
     )
     summary[3].metric(
         "TEDUH data through",
@@ -96,7 +87,6 @@ def render_refresh_status_panel(settings: Settings) -> None:
             status.get("source_dataset_as_of")
             or status.get("last_successful_source_dataset_as_of")
         ),
-        help="TEDUH frontend data-through label; not a per-project API update timestamp.",
     )
     st.caption(
         f"Started {display_timestamp(status.get('started_at'))} · "
@@ -149,11 +139,9 @@ def render_weekly_progress(project_history: pd.DataFrame) -> None:
     weekly["Value sold %"] = weekly.get("value_sold_percentage")
     weekly["Construction %"] = weekly["construction_percentage"]
     weekly["Construction change"] = weekly["construction_percentage"].diff()
-    weekly["Status"] = weekly["project_status"]
+    weekly["Status"] = weekly["project_status"].map(display_text)
     if len(weekly) == 1:
-        st.info(
-            "This is the opening observation. Past sales dates cannot be reconstructed from TEDUH's current snapshot."
-        )
+        st.info("Opening observation; changes begin with the next refresh.")
     chart_columns = ["Unit sales %", "Value sold %", "Construction %"]
     chart = weekly.set_index("week_start")[[
         column for column in chart_columns if column in weekly.columns
@@ -234,7 +222,10 @@ def render_project_details(
         identity_middle.write(display_text(selected.get("developer_name")))
         identity_right.markdown("**Project code** · `TEDUH`")
         identity_right.write(display_text(selected.get("source_project_id")))
-        identity_status.markdown("**Current status** · `TEDUH`")
+        identity_status.markdown(
+            "**Current status** · `TEDUH`",
+            help=status_help(selected.get("project_status")),
+        )
         identity_status.write(display_text(selected.get("project_status")))
         parent_group = str(selected.get("parent_group") or "").strip()
         if parent_group and on_view_group is not None:
@@ -247,38 +238,34 @@ def render_project_details(
 
         status_folded = str(selected.get("project_status") or "").casefold()
         if any(term in status_folded for term in ("sakit", "lewat", "batal")):
-            st.error(
-                f"Current TEDUH exception: {display_text(selected.get('project_status'))}. "
-                "This is a public HIMS project classification, not a customer or facility risk classification."
-            )
+            st.error(f"TEDUH exception: {display_text(selected.get('project_status'))}")
 
         st.markdown("#### Current monitoring summary")
         progress_columns = st.columns(4)
         progress_columns[0].metric(
             "Units sold · Calculated",
             f"{whole_number(selected.get('sold_units'))} / {whole_number(selected.get('reported_total_units'))}",
-            help="Calculated from individual TEDUH unit sales statuses.",
+            help="TEDUH unit records classified as sold.",
         )
         progress_columns[1].metric(
             "Unit sales · Calculated",
             pct(selected.get("sales_percentage")),
-            help="Sold units divided by comparable TEDUH unit records; not an official TEDUH percentage.",
+            help="Sold units / comparable unit records.",
         )
         progress_columns[2].metric(
             "Value sold · Calculated",
             pct(selected.get("value_sold_percentage")),
-            help="Estimated sold value divided by potential listed GDV where both measures pass coverage checks.",
+            help="Estimated sold value / potential listed GDV.",
         )
         progress_columns[3].metric(
             "Construction · Calculated",
             pct(selected.get("construction_percentage")),
-            help="Unit-weighted calculation from TEDUH component rows where reconciliation checks pass.",
+            help="Unit-weighted TEDUH component progress.",
         )
         gap = selected.get("sales_construction_gap")
         if pd.notna(gap):
             st.caption(
-                f"Unit sales are {signed_number(gap, decimals=1, suffix=' pp')} versus construction progress. "
-                "This gap is a monitoring signal, not a credit conclusion."
+                f"Sales vs construction: {signed_number(gap, decimals=1, suffix=' pp')}"
             )
 
         if len(project_history) >= 2:
@@ -296,26 +283,55 @@ def render_project_details(
         value_columns[0].metric(
             "Potential listed GDV · Calculated",
             money(selected.get("potential_listed_gdv")),
-            help="Sum of TEDUH listed unit prices when coverage and reconciliation checks pass.",
+            help="Sum of valid TEDUH listed unit prices.",
         )
         value_columns[1].metric(
             "Estimated value sold · Calculated",
             money(selected.get("estimated_sold_value")),
-            help="Uses recorded SPA prices where available and TEDUH listed-price fallback otherwise.",
+            help="Recorded SPA prices with listed-price fallback.",
         )
         value_columns[2].metric(
             "Recorded SPA value · Calculated",
             money(selected.get("recorded_spa_sales_value")),
-            help="Sum of available TEDUH SPA prices for sold unit records.",
+            help="Available recorded SPA prices for sold units.",
         )
         value_columns[3].metric(
             "Remaining listed value · Calculated",
             money(selected.get("remaining_listed_value")),
-            help="Sum of TEDUH listed prices for non-sold unit records where coverage checks pass.",
+            help="Listed prices for units not reported sold.",
         )
-        st.caption(
-            "Value measures are analytical monitoring estimates, not audited developer GDV, revenue or credit conclusions."
+
+        price_columns = st.columns(4)
+        price_columns[0].metric(
+            "Typical listed unit price · Calculated",
+            money(selected.get("median_listed_price_per_unit")),
+            help="Median valid TEDUH listed unit price.",
         )
+        price_columns[1].metric(
+            "Average listed unit price · Calculated",
+            money(selected.get("average_listed_price_per_unit")),
+        )
+        price_columns[2].metric(
+            "Typical recorded SPA · Calculated",
+            money(selected.get("median_recorded_spa_price_per_unit")),
+            help="Median available recorded SPA price for sold units.",
+        )
+        price_columns[3].metric(
+            "Average recorded SPA · Calculated",
+            money(selected.get("average_recorded_spa_price_per_unit")),
+            help=f"SPA price coverage: {pct(selected.get('spa_price_coverage_percentage'))}",
+        )
+        if pd.notna(selected.get("listed_price_p25")) and pd.notna(
+            selected.get("listed_price_p75")
+        ):
+            st.caption(
+                "Typical listed range: "
+                + numeric_range(
+                    selected.get("listed_price_p25"),
+                    selected.get("listed_price_p75"),
+                    prefix="RM ",
+                )
+            )
 
         render_weekly_progress(project_history)
 
@@ -344,10 +360,7 @@ def render_project_details(
             )
             discount = selected.get("median_recorded_discount_percentage")
             if pd.notna(discount):
-                st.caption(
-                    f"Median recorded discount to TEDUH listed price: {pct(discount)}. "
-                    "Negative values indicate recorded SPA prices above listed prices."
-                )
+                st.caption(f"Median recorded discount to listed price: {pct(discount)}")
             if not inventory_rows:
                 st.info("Inventory detail will appear after the next TEDUH refresh using v1.5.")
             else:
@@ -369,9 +382,6 @@ def render_project_details(
                     hide_index=True,
                     width="stretch",
                 )
-            st.caption(
-                "Calculated from current TEDUH unit records. Booked and reserved records remain in remaining inventory until reported sold."
-            )
 
         component_sales = json_rows(selected.get("component_sales_json"))
         component_percentages = [
@@ -406,9 +416,6 @@ def render_project_details(
                     hide_index=True,
                     width="stretch",
                 )
-                st.caption(
-                    "Calculated independently from each TEDUH unit group. Neutral component labels are used when TEDUH supplies no block name; unit-number prefixes are not interpreted as block names."
-                )
                 if selected.get("component_sales_note") not in (None, "") and pd.notna(
                     selected.get("component_sales_note")
                 ):
@@ -419,16 +426,14 @@ def render_project_details(
             for field in ("vp_period_amended", "approved_extension_period", "revised_vp_date")
         )
         if agreement_expanded:
-            st.warning(
-                "TEDUH records an amended or extended contractual timeline for this project. "
-                "Open the timeline section for details."
-            )
-        with st.expander("Contractual timeline and completion"):
+            st.warning("Contractual timeline amended or extended")
+        with st.expander(
+            "Contractual timeline and completion", expanded=agreement_expanded
+        ):
             contract_top = st.columns(4)
             contract_top[0].metric(
                 "Agreement type · TEDUH",
                 display_text(selected.get("agreement_type")),
-                help="Type of statutory sale and purchase agreement reported by TEDUH.",
             )
             contract_top[1].metric(
                 "Original construction period · TEDUH",
@@ -496,9 +501,6 @@ def render_project_details(
                         }
                     )
                 st.dataframe(component_detail_rows, hide_index=True, width="stretch")
-                st.caption(
-                    "TEDUH component status is based on the latest HIMS 7(f) reporting. Component construction rows are not joined to sales groups unless TEDUH provides a reliable shared identifier."
-                )
 
         permit_history = json_rows(selected.get("permit_history_json"))
         with st.expander("Project, permit and developer details"):
@@ -551,7 +553,6 @@ def render_project_details(
         if has_manual_launch or has_manual_built_up or has_manual_psf or has_manual_notes:
             with st.expander("Locally entered supplementary details"):
                 with st.container(key=manual_container_key):
-                    st.caption("These fields are maintained locally and do not come from TEDUH.")
                     manual_count = int(has_manual_launch) + int(has_manual_built_up) + int(has_manual_psf)
                     manual_columns = st.columns(manual_count) if manual_count else []
                     manual_index = 0
@@ -589,10 +590,8 @@ def render_project_details(
             timing[0].metric(
                 "Retrieved from TEDUH · Application",
                 display_timestamp(selected.get("retrieved_at")),
-                help="Timestamp generated by this application when the API response was obtained.",
             )
             timing[1].metric(
                 "TEDUH displayed data through · TEDUH frontend",
                 display_date(selected.get("source_dataset_as_of")),
-                help="Portal-wide TEDUH frontend label; not an authoritative per-project API timestamp.",
             )

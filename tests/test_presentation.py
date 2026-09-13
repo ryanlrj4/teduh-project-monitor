@@ -5,6 +5,7 @@ import pandas as pd
 from teduh_monitor.presentation import (
     latest_project_changes,
     present_alert,
+    translate_status_terms,
     translate_teduh_text,
 )
 
@@ -86,8 +87,16 @@ def test_translate_teduh_text_translates_common_source_values() -> None:
     )
 
 
-def test_translate_teduh_text_preserves_malay_and_official_status_terms() -> None:
+def test_translate_teduh_text_preserves_malay_and_translates_status_terms() -> None:
     assert translate_teduh_text("Berfasa", english=False) == "Berfasa"
-    assert translate_teduh_text("Lancar", english=True) == "Lancar"
-    assert translate_teduh_text("Sakit", english=True) == "Sakit"
-    assert translate_teduh_text("Siap Dengan CCC", english=True) == "Siap Dengan CCC"
+    assert translate_teduh_text("Lancar", english=True) == "On Track"
+    assert translate_teduh_text("Sakit", english=True) == "Distressed"
+    assert translate_teduh_text("Lewat", english=True) == "Delayed"
+    assert translate_teduh_text("Siap Dengan CCC", english=True) == "Completed with CCC"
+
+
+def test_translate_status_terms_updates_statuses_inside_messages() -> None:
+    assert translate_status_terms("Status: Lancar → Sakit", english=True) == (
+        "Status: On Track → Distressed"
+    )
+    assert translate_status_terms("Status: Lancar", english=False) == "Status: Lancar"

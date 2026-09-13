@@ -130,18 +130,18 @@ def build_alerts(history: list[dict[str, Any]]) -> list[dict[str, str]]:
         status = str(current.get("project_status") or "")
         status_folded = status.casefold()
         if "sakit" in status_folded:
-            add(current, "critical", "status_sakit", f"Current TEDUH status is {status}")
+            add(current, "critical", "status_sakit", f"TEDUH status: {status}")
         if "lewat" in status_folded:
-            add(current, "high", "status_lewat", f"Current TEDUH status is {status}")
+            add(current, "high", "status_lewat", f"TEDUH status: {status}")
         if "batal" in status_folded:
-            add(current, "critical", "permit_cancelled", f"Current TEDUH status is {status}")
+            add(current, "critical", "permit_cancelled", f"TEDUH status: {status}")
         if current.get("construction_confidence") == "unavailable":
             add(current, "info", "construction_unavailable", str(current.get("construction_note") or "Construction percentage is unavailable"))
         completed = "siap dengan" in status_folded
         permit_days = _days_until(current.get("snapshot_date"), current.get("permit_end_date"))
         if not completed and permit_days is not None:
             if permit_days < 0:
-                add(current, "high", "permit_expired", "TEDUH reports that the current advertising and sales permit has expired")
+                add(current, "high", "permit_expired", "Advertising and sales permit expired")
             elif permit_days <= 90:
                 add(current, "info", "permit_expiring", f"Current advertising and sales permit expires in {permit_days} day(s)")
         licence_days = _days_until(
@@ -149,12 +149,12 @@ def build_alerts(history: list[dict[str, Any]]) -> list[dict[str, str]]:
         )
         if licence_days is not None:
             if licence_days < 0:
-                add(current, "high", "developer_licence_expired", "TEDUH reports that the developer licence has expired")
+                add(current, "high", "developer_licence_expired", "Developer licence expired")
             elif licence_days <= 90:
                 add(current, "info", "developer_licence_expiring", f"Developer licence expires in {licence_days} day(s)")
         developer_status = str(current.get("developer_status") or "").strip()
         if developer_status and developer_status.casefold() not in {"aktif", "active"}:
-            add(current, "high", "developer_inactive", f"Current TEDUH developer status is {developer_status}")
+            add(current, "high", "developer_inactive", f"Developer status: {developer_status}")
         sales_gap = _number(current.get("sales_construction_gap"))
         if sales_gap is not None and sales_gap <= -25:
             add(
@@ -167,11 +167,11 @@ def build_alerts(history: list[dict[str, Any]]) -> list[dict[str, str]]:
             continue
         previous_status = str(previous.get("project_status") or "")
         if previous_status and status and previous_status != status:
-            add(current, "high", "status_changed", f"Status changed from {previous_status} to {status}")
+            add(current, "high", "status_changed", f"Status: {previous_status} → {status}")
         current_sold = _number(current.get("sold_units"))
         previous_sold = _number(previous.get("sold_units"))
         if current_sold is not None and previous_sold is not None and current_sold < previous_sold:
-            add(current, "high", "sold_units_decreased", f"Reported sold units decreased from {int(previous_sold)} to {int(current_sold)}")
+            add(current, "high", "sold_units_decreased", f"Units sold: {int(previous_sold)} → {int(current_sold)}")
         current_construction = _number(current.get("construction_percentage"))
         previous_construction = _number(previous.get("construction_percentage"))
         if (
@@ -179,7 +179,7 @@ def build_alerts(history: list[dict[str, Any]]) -> list[dict[str, str]]:
             and previous_construction is not None
             and current_construction < previous_construction
         ):
-            add(current, "high", "construction_decreased", f"Construction percentage decreased from {previous_construction:g}% to {current_construction:g}%")
+            add(current, "high", "construction_decreased", f"Construction: {previous_construction:g}% → {current_construction:g}%")
         if previous.get("ccc_obtained") == "No" and current.get("ccc_obtained") == "Yes":
             add(current, "info", "completion_certificate_obtained", "TEDUH now reports CCC/CFO completion evidence")
     severity_rank = {"critical": 0, "high": 1, "info": 2}

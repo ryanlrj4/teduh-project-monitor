@@ -70,7 +70,13 @@ def backfill_v15_derived_metrics(frame: pd.DataFrame) -> pd.DataFrame:
         migrated["sales_construction_gap"], errors="coerce"
     ).fillna(derived_gap)
     for field in (
+        "average_listed_price_per_unit",
+        "median_listed_price_per_unit",
+        "listed_price_p25",
+        "listed_price_p75",
         "sold_listed_value",
+        "average_recorded_spa_price_per_unit",
+        "median_recorded_spa_price_per_unit",
         "recorded_price_realisation_percentage",
         "median_recorded_discount_percentage",
         "bumi_total_units",
@@ -80,6 +86,15 @@ def backfill_v15_derived_metrics(frame: pd.DataFrame) -> pd.DataFrame:
     ):
         if field not in migrated.columns:
             migrated[field] = pd.NA
+
+    priced_count = pd.to_numeric(
+        migrated.get("priced_unit_records_count", pd.Series(index=migrated.index, dtype=float)),
+        errors="coerce",
+    ).where(lambda values: values > 0)
+    average_listed = migrated["potential_listed_gdv"] / priced_count
+    migrated["average_listed_price_per_unit"] = pd.to_numeric(
+        migrated["average_listed_price_per_unit"], errors="coerce"
+    ).fillna(average_listed)
     if "remaining_inventory_json" not in migrated.columns:
         migrated["remaining_inventory_json"] = ""
     return migrated

@@ -85,6 +85,16 @@ def open_group(group_name: str) -> None:
     st.switch_page(groups_page)
 
 
+def open_project(project_code: str) -> None:
+    match = current[current["source_project_id"].astype(str) == str(project_code)]
+    if not match.empty:
+        row = match.iloc[0]
+        st.session_state["all_projects_name_search"] = str(
+            row.get("display_name") or row.get("project_name") or project_code
+        )
+    st.switch_page(projects_page)
+
+
 def show_my_portfolio() -> None:
     render_my_portfolio(
         profile_current,
@@ -97,7 +107,7 @@ def show_my_portfolio() -> None:
 
 def show_groups() -> None:
     render_groups(
-        profile_current,
+        current,
         history,
         requested_group=st.session_state.pop("selected_group", None),
         on_view_group=open_group,
@@ -105,11 +115,19 @@ def show_groups() -> None:
 
 
 def show_compare() -> None:
-    render_compare(profile_current, history, on_view_group=open_group)
+    render_compare(
+        profile_current,
+        current,
+        settings=SETTINGS,
+        active_portfolio_id=selected_portfolio,
+        memberships=memberships,
+        shortlist_rows=shortlist_rows,
+        on_open_project=open_project,
+    )
 
 
 def show_projects() -> None:
-    render_all_projects(profile_current, history, on_view_group=open_group)
+    render_all_projects(current, history, on_view_group=open_group)
 
 
 def show_alerts() -> None:
@@ -201,26 +219,41 @@ navigation = st.navigation(
     expanded=True,
 )
 
-if not profile_current.empty:
+if not current.empty:
     st.sidebar.divider()
     st.sidebar.markdown("### Find a project")
-    searchable = profile_current.sort_values("display_name")
-    search_labels = {
-        str(row["source_project_id"]): str(
-            row.get("display_name") or row.get("project_name") or row["source_project_id"]
-        )
-        for _, row in searchable.iterrows()
-    }
-    search_code = st.sidebar.selectbox(
-        "Project",
-        [""] + list(search_labels),
-        format_func=lambda code: "Choose a project" if not code else search_labels[code],
+    project_query = st.sidebar.text_input(
+        "Project search",
+        placeholder="Name, code, group or developer",
         key=f"global_project_search_{selected_portfolio}",
         label_visibility="collapsed",
     )
-    if search_code and st.sidebar.button("Open project", width="stretch"):
-        st.session_state["all_projects_name_search"] = search_labels[search_code]
-        st.switch_page(projects_page)
+    if project_query.strip():
+        needle = project_query.strip().casefold()
+        searchable = current.copy()
+        search_columns = [
+            "source_project_id",
+            "display_name",
+            "project_name",
+            "parent_group",
+            "developer_name",
+        ]
+        matches = searchable[
+            searchable[search_columns]
+            .fillna("")
+            .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
+        ].sort_values("display_name")
+        if matches.empty:
+            st.sidebar.caption("No matching projects")
+        for _, row in matches.head(6).iterrows():
+            code = str(row["source_project_id"])
+            label = str(row.get("display_name") or row.get("project_name") or code)
+            if st.sidebar.button(
+                f"{label} · {code}",
+                key=f"global_project_result_{code}",
+                width="stretch",
+            ):
+                open_project(code)
 
 st.markdown(
     '<div class="app-kicker">Commercial Banking · Real Estate</div>',
@@ -245,9 +278,6 @@ with st.popover("Settings"):
         "Translate TEDUH values to English",
         value=True,
         key="translate_teduh_values",
-    )
-    st.caption(
-        "Turn this off to show the original Malay source wording. Official HIMS status terms such as Lancar, Sakit, Lewat and Siap Dengan CCC/CFO remain unchanged."
     )
 
 if notice := st.session_state.pop("app_notice", None):

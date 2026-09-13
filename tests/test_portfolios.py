@@ -4,6 +4,7 @@ import pandas as pd
 
 from teduh_monitor.config import Settings
 from teduh_monitor.portfolios import (
+    assign_portfolio_projects,
     load_portfolio_memberships,
     load_portfolios,
     portfolio_current,
@@ -55,3 +56,39 @@ def test_save_and_load_profile_memberships(tmp_path: Path) -> None:
     view = portfolio_current(current, shortlist_rows(), memberships, profile_id)
     assert set(view["source_project_id"]) == {"1-1", "2-1"}
     assert set(view["project_set"]) == {"reporting_set", "comparator_set"}
+
+
+def test_assign_portfolio_projects_adds_and_reclassifies_memberships(tmp_path: Path) -> None:
+    settings = Settings(root=tmp_path)
+    write_csv(
+        tmp_path / "config" / "portfolio_projects.csv",
+        [
+            {
+                "portfolio_id": "test_profile",
+                "source_project_id": "1-1",
+                "project_set": "reporting_set",
+            }
+        ],
+        ["portfolio_id", "source_project_id", "project_set"],
+    )
+
+    assign_portfolio_projects(
+        settings,
+        portfolio_id="test_profile",
+        project_codes=["1-1", "2-1"],
+        project_set="comparator_set",
+    )
+
+    memberships = load_portfolio_memberships(settings)
+    assert memberships == [
+        {
+            "portfolio_id": "test_profile",
+            "source_project_id": "1-1",
+            "project_set": "comparator_set",
+        },
+        {
+            "portfolio_id": "test_profile",
+            "source_project_id": "2-1",
+            "project_set": "comparator_set",
+        },
+    ]
