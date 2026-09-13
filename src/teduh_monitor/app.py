@@ -36,41 +36,9 @@ ROOT = project_root()
 SETTINGS = Settings(root=ROOT)
 STYLESHEET = Path(__file__).with_name("ui") / "styles.css"
 
-MONITOR_PAGES = ("My Portfolio", "Groups", "Compare", "Projects", "Alerts")
-MANAGE_PAGES = (
-    "Profiles",
-    "Tracked projects",
-    "Add or edit",
-    "Discovery",
-    "Refresh & data quality",
-    "Audit log",
-)
-PAGE_BY_LABEL = {
-    **{f"Monitor · {page}": page for page in MONITOR_PAGES},
-    **{f"Manage · {page}": page for page in MANAGE_PAGES},
-}
-LABEL_BY_PAGE = {page: label for label, page in PAGE_BY_LABEL.items()}
-
-
-def request_page(page: str) -> None:
-    st.session_state["requested_page"] = page
-
-
-def open_group(group_name: str) -> None:
-    st.session_state["selected_group"] = group_name
-    request_page("Groups")
-
 
 st.set_page_config(page_title="Real Estate Project Monitor", page_icon="🏢", layout="wide")
 st.markdown(STYLESHEET.read_text(encoding="utf-8"), unsafe_allow_html=True)
-st.markdown(
-    '<div class="app-kicker">Commercial Banking · Real Estate</div>',
-    unsafe_allow_html=True,
-)
-st.markdown(
-    '<div class="app-title">Real Estate Project Monitor</div>',
-    unsafe_allow_html=True,
-)
 
 shortlist_rows = load_shortlist(SETTINGS)
 audit_rows = load_audit_log(SETTINGS)
@@ -106,21 +74,136 @@ profile_alert_rows = [
 profile_shortlist_by_project = {
     row["source_project_id"]: row for row in profile_shortlist
 }
+registry_name_by_code = {
+    str(row.get("source_project_id") or ""): str(row.get("project_name") or "")
+    for row in current_rows
+}
 
-if requested_page := st.session_state.pop("requested_page", None):
-    st.session_state["active_page"] = LABEL_BY_PAGE[requested_page]
-if st.session_state.get("active_page") not in PAGE_BY_LABEL:
-    st.session_state["active_page"] = LABEL_BY_PAGE["My Portfolio"]
 
-st.sidebar.markdown("### Directory")
-page_label = st.sidebar.selectbox(
-    "Page",
-    list(PAGE_BY_LABEL),
-    key="active_page",
+def open_group(group_name: str) -> None:
+    st.session_state["selected_group"] = group_name
+    st.switch_page(groups_page)
+
+
+def show_my_portfolio() -> None:
+    render_my_portfolio(
+        profile_current,
+        history,
+        profile_alert_rows,
+        portfolio_name=portfolio_names[selected_portfolio],
+        on_view_group=open_group,
+    )
+
+
+def show_groups() -> None:
+    render_groups(
+        profile_current,
+        history,
+        requested_group=st.session_state.pop("selected_group", None),
+        on_view_group=open_group,
+    )
+
+
+def show_compare() -> None:
+    render_compare(profile_current, history, on_view_group=open_group)
+
+
+def show_projects() -> None:
+    render_all_projects(profile_current, history, on_view_group=open_group)
+
+
+def show_alerts() -> None:
+    render_alerts(profile_alert_rows, profile_shortlist_by_project)
+
+
+def show_profiles() -> None:
+    render_profiles(
+        SETTINGS,
+        portfolios,
+        memberships,
+        shortlist_rows,
+        registry_name_by_code,
+    )
+
+
+def show_tracked_projects() -> None:
+    render_shortlist(
+        SETTINGS,
+        shortlist_rows,
+        registry_name_by_code,
+        include_refresh=False,
+    )
+
+
+def show_add_or_edit() -> None:
+    render_add_or_edit(SETTINGS, shortlist_rows, registry_name_by_code)
+
+
+def show_discovery() -> None:
+    render_discovery(SETTINGS, shortlist_rows)
+
+
+def show_refresh() -> None:
+    render_refresh_and_data_quality(SETTINGS)
+
+
+def show_audit_log() -> None:
+    render_audit_log(audit_rows, profile_shortlist_by_project, registry_name_by_code)
+
+
+my_portfolio_page = st.Page(
+    show_my_portfolio,
+    title="My Portfolio",
+    icon=":material/home:",
+    default=True,
 )
-page = PAGE_BY_LABEL[page_label]
+groups_page = st.Page(show_groups, title="Groups", icon=":material/apartment:")
+compare_page = st.Page(show_compare, title="Compare", icon=":material/compare_arrows:")
+projects_page = st.Page(show_projects, title="Projects", icon=":material/search:")
+alerts_page = st.Page(show_alerts, title="Alerts", icon=":material/notifications:")
+profiles_page = st.Page(show_profiles, title="Profiles", icon=":material/person:")
+tracked_projects_page = st.Page(
+    show_tracked_projects,
+    title="Tracked projects",
+    icon=":material/list_alt:",
+)
+add_or_edit_page = st.Page(
+    show_add_or_edit,
+    title="Add or edit",
+    icon=":material/edit:",
+)
+discovery_page = st.Page(show_discovery, title="Discovery", icon=":material/travel_explore:")
+refresh_page = st.Page(
+    show_refresh,
+    title="Refresh & data quality",
+    icon=":material/sync:",
+)
+audit_page = st.Page(show_audit_log, title="Audit log", icon=":material/history:")
+
+navigation = st.navigation(
+    {
+        "Monitor": [
+            my_portfolio_page,
+            groups_page,
+            compare_page,
+            projects_page,
+            alerts_page,
+        ],
+        "Manage": [
+            profiles_page,
+            tracked_projects_page,
+            add_or_edit_page,
+            discovery_page,
+            refresh_page,
+            audit_page,
+        ],
+    },
+    expanded=True,
+)
 
 if not profile_current.empty:
+    st.sidebar.divider()
+    st.sidebar.markdown("### Find a project")
     searchable = profile_current.sort_values("display_name")
     search_labels = {
         str(row["source_project_id"]): str(
@@ -129,16 +212,24 @@ if not profile_current.empty:
         for _, row in searchable.iterrows()
     }
     search_code = st.sidebar.selectbox(
-        "Find a project",
+        "Project",
         [""] + list(search_labels),
         format_func=lambda code: "Choose a project" if not code else search_labels[code],
         key=f"global_project_search_{selected_portfolio}",
+        label_visibility="collapsed",
     )
-    if search_code and st.sidebar.button("Open project"):
+    if search_code and st.sidebar.button("Open project", width="stretch"):
         st.session_state["all_projects_name_search"] = search_labels[search_code]
-        request_page("Projects")
-        st.rerun()
+        st.switch_page(projects_page)
 
+st.markdown(
+    '<div class="app-kicker">Commercial Banking · Real Estate</div>',
+    unsafe_allow_html=True,
+)
+st.markdown(
+    '<div class="app-title">Real Estate Project Monitor</div>',
+    unsafe_allow_html=True,
+)
 last_retrieved = max((row.get("retrieved_at", "") for row in current_rows), default="")
 source_as_of = max((row.get("source_dataset_as_of", "") for row in current_rows), default="")
 st.markdown(
@@ -164,55 +255,7 @@ if notice := st.session_state.pop("app_notice", None):
 if error := st.session_state.pop("app_error", None):
     st.error(error)
 
-registry_name_by_code = {
-    str(row.get("source_project_id") or ""): str(row.get("project_name") or "")
-    for row in current_rows
-}
-
-if page == "My Portfolio":
-    render_my_portfolio(
-        profile_current,
-        history,
-        profile_alert_rows,
-        portfolio_name=portfolio_names[selected_portfolio],
-        on_view_group=open_group,
-    )
-elif page == "Groups":
-    render_groups(
-        profile_current,
-        history,
-        requested_group=st.session_state.pop("selected_group", None),
-        on_view_group=open_group,
-    )
-elif page == "Compare":
-    render_compare(profile_current, history, on_view_group=open_group)
-elif page == "Projects":
-    render_all_projects(profile_current, history, on_view_group=open_group)
-elif page == "Alerts":
-    render_alerts(profile_alert_rows, profile_shortlist_by_project)
-elif page == "Profiles":
-    render_profiles(
-        SETTINGS,
-        portfolios,
-        memberships,
-        shortlist_rows,
-        registry_name_by_code,
-    )
-elif page == "Tracked projects":
-    render_shortlist(
-        SETTINGS,
-        shortlist_rows,
-        registry_name_by_code,
-        include_refresh=False,
-    )
-elif page == "Add or edit":
-    render_add_or_edit(SETTINGS, shortlist_rows, registry_name_by_code)
-elif page == "Discovery":
-    render_discovery(SETTINGS, shortlist_rows)
-elif page == "Refresh & data quality":
-    render_refresh_and_data_quality(SETTINGS)
-elif page == "Audit log":
-    render_audit_log(audit_rows, profile_shortlist_by_project, registry_name_by_code)
+navigation.run()
 
 st.markdown(
     '<div class="creator-footer">Concept and prototype by Lim Ri Jun</div>',
