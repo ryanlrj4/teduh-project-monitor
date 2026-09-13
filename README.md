@@ -2,7 +2,7 @@
 
 This is a local, beginner-friendly monitoring dashboard for selected private-housing projects across supported Malaysian regions. It reads the public TEDUH JSON API, keeps dated observations, and highlights sales, construction, and status risks without requiring a database server or cloud account.
 
-The shortlist contains the authorized Kuala Lumpur comparison set, one manually added KL project, and four user-supplied Penang reporting-set projects. It contains only public TEDUH identifiers/facts and permitted local mappings. It does **not** contain bank financing information, CHGP pricing, analyst notes, comparison reasoning, or other proprietary analysis.
+The shortlist contains the authorized Kuala Lumpur comparison set and user-selected tracked projects in the supported regions. It contains only public TEDUH identifiers/facts and permitted local mappings. It does **not** contain bank financing information, CHGP pricing, analyst notes, comparison reasoning, or other proprietary analysis.
 
 ## Start the dashboard
 
@@ -19,7 +19,7 @@ The dashboard opens locally in your browser. Its sidebar is organised around the
 
 Portfolio profiles are saved working views, not security roles. The Admin / Master Portfolio uses the full tracked-project register; a small Test Portfolio demonstrates a separate project selection and classification without duplicating TEDUH observations.
 
-The dashboard retains a manual refresh button. `run_weekly_refresh.bat` is the safe Monday-oriented scheduler command: it refreshes only when the current Monday-based week has no successful observation. Registering the command with Windows Task Scheduler is a deployment step; the computer must be on and connected when it runs.
+The dashboard supports both full and targeted refreshes. A newly added active project is fetched immediately; project details and Tracked projects can refresh one stale project; and Compare can refresh stale Comparator Set projects. A project with an observation from the current local calendar day is skipped. `run_weekly_refresh.bat` is the safe Monday-oriented scheduler command: it refreshes only when the current Monday-based week has no successful observation. Registering the command with Windows Task Scheduler is a deployment step; the computer must be on and connected when it runs.
 
 ## What is tracked
 
@@ -93,6 +93,6 @@ part of normal monitoring.
 
 ## Safety behavior
 
-A refresh stages and verifies every active project before replacing the previous valid files. HTML/error pages, missing required fields, invalid project codes, state/region mismatches, pre-HIMS projects, and incomplete shortlist refreshes stop publication rather than turning missing facts into zeroes. The dashboard retains the last run's status after rerun and explicitly states when a failed attempt preserved the previous valid snapshot.
+A full refresh verifies every active project before replacing the previous valid files. A targeted refresh validates the requested projects and merges only those rows into the current snapshot and history. HTML/error pages, missing required fields, invalid project codes, state/region mismatches, pre-HIMS projects, and incomplete refreshes stop publication rather than turning missing facts into zeroes. Unrelated projects and the previous valid data remain intact after a targeted failure. The dashboard retains the last full run's status after rerun and explicitly states when a failed full attempt preserved the previous valid snapshot.
 
 The tool is a local analytical aid, not a system of record. Keep customer-confidential information, facility balances, credit decisions, and other bank-restricted data outside its free-text notes unless the environment has been approved for that information.

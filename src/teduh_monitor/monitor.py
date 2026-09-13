@@ -23,6 +23,7 @@ from .storage import atomic_write_csv, atomic_write_parquet, read_csv
 
 Progress = Callable[[str], None]
 ProjectProgress = Callable[[int, int, str, bool], None]
+ClientFactory = Callable[..., TeduhClient]
 
 
 def current_metrics_path(settings: Settings) -> Path:
@@ -66,6 +67,111 @@ def project_scale(gdv: Any, confidence: str | None) -> tuple[str, str, str]:
     if value < Decimal("1000000000"):
         return "RM500m–<RM1bn", "Include", "Large-scale project GDV"
     return "RM1bn+", "Include", "Major project GDV"
+
+
+def _apply_shortlist_metadata(
+    record: dict[str, Any], tracked: dict[str, str]
+) -> dict[str, Any]:
+    scale_band, commercial_scope, scope_reason = project_scale(
+        record.get("potential_listed_gdv"), str(record.get("gdv_confidence") or "")
+    )
+    record.update(
+        {
+            "region": tracked["region"],
+            "display_name": tracked["display_name"]
+            or record.get("project_name")
+            or tracked["source_project_id"],
+            "parent_group": tracked["parent_group"],
+            "project_set": tracked["project_set"],
+            "manual_launch_date": tracked["manual_launch_date"],
+            "manual_built_up_min_sqft": tracked["manual_built_up_min_sqft"],
+            "manual_built_up_max_sqft": tracked["manual_built_up_max_sqft"],
+            "manual_psf_min": tracked["manual_psf_min"],
+            "manual_psf_max": tracked["manual_psf_max"],
+            "tracking_notes": tracked["tracking_notes"],
+            "shortlist_active": tracked["active"],
+            "shortlist_origin": tracked["origin"],
+            "project_scale_band": scale_band,
+            "commercial_scope": commercial_scope,
+            "commercial_scope_reason": scope_reason,
+        }
+    )
+    return record
+
+
+def _collect_tracked_projects(
+    settings: Settings,
+    tracked_projects: list[dict[str, str]],
+    *,
+    snapshot_date: str,
+    source_dataset_as_of: str,
+    progress: Progress,
+    project_progress: ProjectProgress | None = None,
+    client_factory: ClientFactory = TeduhClient,
+) -> tuple[list[dict[str, Any]], int, int]:
+    records: list[dict[str, Any]] = []
+    failures: list[str] = []
+    cached_project_count = 0
+    live_project_count = 0
+    with client_factory(settings, snapshot_date=snapshot_date, force=False) as client:
+        for index, tracked in enumerate(tracked_projects, start=1):
+            code = tracked["source_project_id"]
+            project_succeeded = False
+            try:
+                expected_state = str(REGION_CONFIGS[tracked["region"]]["state_label"])
+                collected = collect_project(
+                    client,
+                    project_code=code,
+                    snapshot_date=snapshot_date,
+                    source_dataset_as_of=source_dataset_as_of,
+                    expected_state=expected_state,
+                    expected_region=tracked["region"],
+                )
+                records.append(_apply_shortlist_metadata(collected.record, tracked))
+                project_succeeded = True
+                if collected.detail_from_cache and collected.units_from_cache:
+                    cached_project_count += 1
+                else:
+                    live_project_count += 1
+            except (SourceAnomaly, ValueError) as exc:
+                failures.append(f"{code}: {exc}")
+            if project_progress is not None:
+                project_progress(index, len(tracked_projects), code, project_succeeded)
+            if index == 1 or index % 5 == 0 or index == len(tracked_projects):
+                progress(f"Reviewed {index}/{len(tracked_projects)} project(s).")
+    if failures:
+        preview = "; ".join(failures[:5])
+        raise SourceAnomaly(
+            f"TEDUH refresh failed for {len(failures)} project(s); valid outputs were preserved. {preview}"
+        )
+    return records, cached_project_count, live_project_count
+
+
+def _sort_current(records: list[dict[str, Any]]) -> None:
+    records.sort(
+        key=lambda row: (
+            str(row.get("region") or "").casefold(),
+            str(row.get("display_name") or "").casefold(),
+            str(row.get("source_project_id")),
+        )
+    )
+
+
+def _publish_current(settings: Settings, records: list[dict[str, Any]]) -> None:
+    validation_records = [
+        {key: None if value == "" else value for key, value in row.items()}
+        for row in records
+    ]
+    issues = validate_records(validation_records)
+    require_no_errors(issues)
+    _sort_current(records)
+    atomic_write_csv(current_metrics_path(settings), records, SHORTLIST_FIELDS)
+    atomic_write_parquet(
+        current_parquet_path(settings),
+        records,
+        SHORTLIST_FIELD_SPECS,
+        blank_as_none=True,
+    )
 
 
 def _merge_history(settings: Settings, current: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -192,85 +298,24 @@ def _snapshot_shortlist(
     *,
     progress: Progress = print,
     project_progress: ProjectProgress | None = None,
+    client_factory: ClientFactory = TeduhClient,
 ) -> dict[str, Any]:
     today = date.today().isoformat()
     source_dataset_as_of = (date.today() - timedelta(days=1)).isoformat()
     shortlist = load_shortlist(settings, active_only=True)
     if not shortlist:
         raise ValueError("The active shortlist is empty")
-    records: list[dict[str, Any]] = []
-    failures: list[str] = []
-    cached_project_count = 0
-    live_project_count = 0
     progress(f"Refreshing {len(shortlist)} active TEDUH shortlist projects.")
-    with TeduhClient(settings, snapshot_date=today, force=False) as client:
-        for index, tracked in enumerate(shortlist, start=1):
-            code = tracked["source_project_id"]
-            project_succeeded = False
-            try:
-                expected_state = str(REGION_CONFIGS[tracked["region"]]["state_label"])
-                collected = collect_project(
-                    client,
-                    project_code=code,
-                    snapshot_date=today,
-                    source_dataset_as_of=source_dataset_as_of,
-                    expected_state=expected_state,
-                    expected_region=tracked["region"],
-                )
-                record = collected.record
-                scale_band, commercial_scope, scope_reason = project_scale(
-                    record.get("potential_listed_gdv"), str(record.get("gdv_confidence") or "")
-                )
-                record.update(
-                    {
-                        "region": tracked["region"],
-                        "display_name": tracked["display_name"] or record.get("project_name") or code,
-                        "parent_group": tracked["parent_group"],
-                        "project_set": tracked["project_set"],
-                        "manual_launch_date": tracked["manual_launch_date"],
-                        "manual_built_up_min_sqft": tracked["manual_built_up_min_sqft"],
-                        "manual_built_up_max_sqft": tracked["manual_built_up_max_sqft"],
-                        "manual_psf_min": tracked["manual_psf_min"],
-                        "manual_psf_max": tracked["manual_psf_max"],
-                        "tracking_notes": tracked["tracking_notes"],
-                        "shortlist_active": tracked["active"],
-                        "shortlist_origin": tracked["origin"],
-                        "project_scale_band": scale_band,
-                        "commercial_scope": commercial_scope,
-                        "commercial_scope_reason": scope_reason,
-                    }
-                )
-                records.append(record)
-                project_succeeded = True
-                if collected.detail_from_cache and collected.units_from_cache:
-                    cached_project_count += 1
-                else:
-                    live_project_count += 1
-            except (SourceAnomaly, ValueError) as exc:
-                failures.append(f"{code}: {exc}")
-            if project_progress is not None:
-                project_progress(index, len(shortlist), code, project_succeeded)
-            if index == 1 or index % 5 == 0 or index == len(shortlist):
-                progress(f"Reviewed {index}/{len(shortlist)} shortlist projects.")
-    if failures:
-        preview = "; ".join(failures[:5])
-        raise SourceAnomaly(f"Shortlist refresh failed for {len(failures)} project(s); valid outputs were preserved. {preview}")
-    issues = validate_records(records)
-    require_no_errors(issues)
-    records.sort(
-        key=lambda row: (
-            str(row.get("region") or "").casefold(),
-            str(row.get("display_name") or "").casefold(),
-            str(row.get("source_project_id")),
-        )
+    records, cached_project_count, live_project_count = _collect_tracked_projects(
+        settings,
+        shortlist,
+        snapshot_date=today,
+        source_dataset_as_of=source_dataset_as_of,
+        progress=progress,
+        project_progress=project_progress,
+        client_factory=client_factory,
     )
-    atomic_write_csv(current_metrics_path(settings), records, SHORTLIST_FIELDS)
-    atomic_write_parquet(
-        current_parquet_path(settings),
-        records,
-        SHORTLIST_FIELD_SPECS,
-        blank_as_none=True,
-    )
+    _publish_current(settings, records)
     history = _merge_history(settings, records)
     alerts = build_alerts(history)
     atomic_write_csv(alerts_path(settings), alerts, ALERT_FIELDS)
@@ -289,6 +334,100 @@ def _snapshot_shortlist(
             "history_parquet": history_parquet_path(settings),
             "alerts_csv": alerts_path(settings),
         },
+    }
+
+
+def refresh_projects(
+    settings: Settings,
+    project_codes: list[str],
+    *,
+    progress: Progress = print,
+    project_progress: ProjectProgress | None = None,
+    snapshot_date: str | None = None,
+    client_factory: ClientFactory = TeduhClient,
+) -> dict[str, Any]:
+    """Refresh selected active projects without replacing unrelated current rows."""
+    today = snapshot_date or date.today().isoformat()
+    source_dataset_as_of = (
+        date.fromisoformat(today) - timedelta(days=1)
+    ).isoformat()
+    requested_codes = list(
+        dict.fromkeys(
+            str(code).strip() for code in project_codes if str(code).strip()
+        )
+    )
+    if not requested_codes:
+        raise ValueError("Select at least one TEDUH project to refresh")
+
+    shortlist_by_code = {
+        row["source_project_id"]: row for row in load_shortlist(settings)
+    }
+    missing = [code for code in requested_codes if code not in shortlist_by_code]
+    if missing:
+        raise ValueError(f"Project is not tracked: {', '.join(missing)}")
+    inactive = [
+        code for code in requested_codes if shortlist_by_code[code]["active"] != "Yes"
+    ]
+    if inactive:
+        raise ValueError(f"Project is not active for refresh: {', '.join(inactive)}")
+
+    current = read_csv(current_metrics_path(settings))
+    current_dates = {
+        str(row.get("source_project_id") or ""): str(row.get("snapshot_date") or "")
+        for row in current
+    }
+    skipped_codes = [code for code in requested_codes if current_dates.get(code) == today]
+    stale_codes = [code for code in requested_codes if code not in skipped_codes]
+    if not stale_codes:
+        progress("The selected project data has already been refreshed today.")
+        return {
+            "snapshot_date": today,
+            "source_dataset_as_of": source_dataset_as_of,
+            "requested_project_count": len(requested_codes),
+            "project_count": 0,
+            "skipped_same_day_count": len(skipped_codes),
+            "refreshed_project_codes": [],
+            "skipped_project_codes": skipped_codes,
+            "cached_project_count": 0,
+            "live_project_count": 0,
+            "alert_count": len(read_csv(alerts_path(settings))),
+        }
+
+    tracked_projects = [shortlist_by_code[code] for code in stale_codes]
+    progress(f"Refreshing {len(tracked_projects)} selected TEDUH project(s).")
+    refreshed, cached_count, live_count = _collect_tracked_projects(
+        settings,
+        tracked_projects,
+        snapshot_date=today,
+        source_dataset_as_of=source_dataset_as_of,
+        progress=progress,
+        project_progress=project_progress,
+        client_factory=client_factory,
+    )
+
+    refreshed_codes = {str(row["source_project_id"]) for row in refreshed}
+    merged_current = [
+        row
+        for row in current
+        if str(row.get("source_project_id") or "") not in refreshed_codes
+    ]
+    merged_current.extend(refreshed)
+    _publish_current(settings, merged_current)
+    history = _merge_history(settings, refreshed)
+    alerts = build_alerts(history)
+    atomic_write_csv(alerts_path(settings), alerts, ALERT_FIELDS)
+    progress("Selected project data was validated and published.")
+    return {
+        "snapshot_date": today,
+        "source_dataset_as_of": source_dataset_as_of,
+        "requested_project_count": len(requested_codes),
+        "project_count": len(refreshed),
+        "skipped_same_day_count": len(skipped_codes),
+        "refreshed_project_codes": stale_codes,
+        "skipped_project_codes": skipped_codes,
+        "cached_project_count": cached_count,
+        "live_project_count": live_count,
+        "alert_count": len(alerts),
     }
 
 

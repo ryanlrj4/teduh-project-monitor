@@ -23,9 +23,9 @@ Open **Add or edit** in the dashboard.
 - **Project set** can be `reporting_set`, `comparator_set`, or `general`.
 - **Launch date**, **built-up range**, and **PSF range** are optional local fields. Launch date remains separate from TEDUH's First SPA date, and blank values stay hidden.
 - **Tracking notes** are local and optional.
-- **Active** controls whether the project is included in the next shortlist refresh.
+- **Active** controls whether the project can be refreshed.
 
-Saving an existing TEDUH code updates that row. The next successful refresh combines those local fields with current public TEDUH facts.
+Saving a new active TEDUH code immediately retrieves and publishes that project's current public facts. Saving an existing project updates its local fields without making a source request.
 
 ## Understanding the refresh
 
@@ -37,6 +37,8 @@ The output has two kinds of columns:
 - **TEDUH/derived fields:** registered project/developer names, status, units, calculated overall and component sales, construction, contractual dates, CCC, values, confidence, permit/licence information, and source URLs.
 
 Manual fields are preserved when TEDUH is refreshed. A source failure cannot silently replace the last valid output.
+
+Use **Refresh this project** in a project detail, or the selector in **Tracked projects**, to update one project without running the full shortlist. The **Compare** page can refresh the active profile's Comparator Set together. These controls request only projects that do not yet have an observation for the current local calendar day. Selected rows are validated and merged without replacing unrelated project data.
 
 The **Refresh & data quality** page retains a refresh-status panel after Streamlit reruns. It records whether the latest attempt succeeded or failed, project counts, elapsed time, same-day cache usage, source data-through date, publication outcome, and recent runs. A failed run explicitly records that the previous valid snapshot was preserved.
 
@@ -53,7 +55,7 @@ Discovery is for finding projects that are not yet tracked. It downloads one sel
 - A successful live discovery is capped at once per region per local calendar day.
 - Repeating it on the same day reuses the saved catalogue.
 - Searching and filtering the saved catalogue does not contact TEDUH.
-- A discovered project is not downloaded in detail until it is added to the shortlist and a shortlist refresh is run.
+- A discovered project is not downloaded in detail until it is added to the shortlist. Adding it triggers its first targeted refresh.
 
 This makes discovery broader but occasional, while ordinary monitoring stays small and predictable.
 

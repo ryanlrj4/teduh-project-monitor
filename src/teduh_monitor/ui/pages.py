@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -36,6 +38,7 @@ def render_all_projects(
     history: pd.DataFrame,
     *,
     on_view_group=None,
+    on_refresh_project: Callable[[str], None] | None = None,
 ) -> None:
     st.subheader("All tracked projects")
     if current.empty:
@@ -168,6 +171,7 @@ def render_all_projects(
                     container_key="all_projects_detail_panel",
                     manual_container_key="all_projects_manual_project_details",
                     on_view_group=on_view_group,
+                    on_refresh_project=on_refresh_project,
                 )
 
 
@@ -178,6 +182,8 @@ def render_shortlist(
     registry_name_by_code: dict[str, str],
     *,
     include_refresh: bool = True,
+    current_snapshot_by_code: dict[str, str] | None = None,
+    on_refresh_project: Callable[[str], None] | None = None,
 ) -> None:
     st.subheader("Tracked projects")
 
@@ -243,6 +249,34 @@ def render_shortlist(
                 "tracking_notes": "Your notes",
             },
         )
+        active_projects = shortlist_frame[shortlist_frame["active"] == "Yes"]
+        if on_refresh_project is not None and not active_projects.empty:
+            st.markdown("#### Refresh one project")
+            refresh_options = active_projects.set_index("source_project_id").to_dict("index")
+            refresh_code = st.selectbox(
+                "Tracked project",
+                list(refresh_options),
+                format_func=lambda project_code: (
+                    f"{refresh_options[project_code]['display_name']} · {project_code}"
+                ),
+                key="single_project_refresh_code",
+            )
+            last_snapshot = (current_snapshot_by_code or {}).get(refresh_code, "")
+            refreshed_today = last_snapshot == date.today().isoformat()
+            refresh_action, refresh_status = st.columns([1, 3])
+            if refresh_action.button(
+                "Refresh project",
+                type="primary",
+                disabled=refreshed_today,
+                width="stretch",
+            ):
+                on_refresh_project(refresh_code)
+                st.rerun()
+            refresh_status.caption(
+                "Already refreshed today."
+                if refreshed_today
+                else f"Last observation: {display_date(last_snapshot)}"
+            )
     if include_refresh:
         render_refresh_and_data_quality(settings)
 
@@ -252,6 +286,8 @@ def render_add_or_edit(
     settings: Settings,
     shortlist_rows: list[dict[str, str]],
     registry_name_by_code: dict[str, str],
+    *,
+    on_project_added: Callable[[str], None] | None = None,
 ) -> None:
     st.subheader("Add or edit a tracked project")
     mode = st.radio("Action", ["Add new", "Edit existing"], horizontal=True)
@@ -325,6 +361,8 @@ def render_add_or_edit(
             st.error("Enter your name or initials so this change can be recorded in the audit log.")
         else:
             try:
+                normalized_code = code.strip()
+                is_new_project = normalized_code not in existing_by_code
                 upsert_shortlist_project(
                     settings,
                     {
@@ -346,7 +384,9 @@ def render_add_or_edit(
                     changed_by=changed_by,
                 )
                 st.session_state["audit_actor"] = changed_by.strip()
-                st.session_state["app_notice"] = f"Saved TEDUH project {code}."
+                st.session_state["app_notice"] = f"Saved TEDUH project {normalized_code}."
+                if is_new_project and active and on_project_added is not None:
+                    on_project_added(normalized_code)
                 st.rerun()
             except ValueError as exc:
                 st.error(str(exc))
@@ -356,6 +396,8 @@ def render_add_or_edit(
 def render_discovery(
     settings: Settings,
     shortlist_rows: list[dict[str, str]],
+    *,
+    on_project_added: Callable[[str], None] | None = None,
 ) -> None:
     st.subheader("On-demand regional discovery")
     st.caption("One live catalogue request per region daily; later runs reuse the cache.")
@@ -457,6 +499,8 @@ def render_discovery(
                     st.session_state["app_notice"] = (
                         f"Added TEDUH project {discovered_code} to the shortlist."
                     )
+                    if on_project_added is not None:
+                        on_project_added(discovered_code)
                     st.rerun()
     else:
         st.info(f"Run Discovery when you want to review the current {discovery_region} project catalogue.")

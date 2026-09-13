@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -185,6 +186,7 @@ def render_project_details(
     container_key: str,
     manual_container_key: str,
     on_view_group: Callable[[str], None] | None = None,
+    on_refresh_project: Callable[[str], None] | None = None,
 ) -> None:
     preferred_name = str(
         selected.get("display_name")
@@ -228,13 +230,34 @@ def render_project_details(
         )
         identity_status.write(display_text(selected.get("project_status")))
         parent_group = str(selected.get("parent_group") or "").strip()
+        project_code = str(selected.get("source_project_id") or "")
+        action_count = int(bool(parent_group and on_view_group)) + int(
+            on_refresh_project is not None
+        )
+        actions = st.columns(action_count) if action_count else []
+        action_index = 0
         if parent_group and on_view_group is not None:
-            st.button(
+            actions[action_index].button(
                 f"View all {parent_group} developments",
-                key=f"view_group_{container_key}_{selected.get('source_project_id')}",
+                key=f"view_group_{container_key}_{project_code}",
                 on_click=on_view_group,
                 args=(parent_group,),
             )
+            action_index += 1
+        if on_refresh_project is not None:
+            refreshed_today = str(selected.get("snapshot_date") or "") == date.today().isoformat()
+            if actions[action_index].button(
+                "Refresh this project",
+                key=f"refresh_project_{container_key}_{project_code}",
+                disabled=refreshed_today,
+                help=(
+                    "This project already has today's observation."
+                    if refreshed_today
+                    else "Fetch and publish only this project's latest TEDUH data."
+                ),
+            ):
+                on_refresh_project(project_code)
+                st.rerun()
 
         status_folded = str(selected.get("project_status") or "").casefold()
         if any(term in status_folded for term in ("sakit", "lewat", "batal")):

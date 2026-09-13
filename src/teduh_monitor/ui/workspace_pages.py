@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
+from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -102,6 +104,7 @@ def render_my_portfolio(
     *,
     portfolio_name: str,
     on_view_group=None,
+    on_refresh_project: Callable[[str], None] | None = None,
 ) -> None:
     st.subheader("My Portfolio")
     if current.empty:
@@ -199,6 +202,7 @@ def render_my_portfolio(
             container_key="my_portfolio_detail",
             manual_container_key="my_portfolio_manual",
             on_view_group=on_view_group,
+            on_refresh_project=on_refresh_project,
         )
 
 
@@ -208,6 +212,7 @@ def render_groups(
     *,
     requested_group: str | None = None,
     on_view_group=None,
+    on_refresh_project: Callable[[str], None] | None = None,
 ) -> None:
     st.subheader("Tracked groups")
     if current.empty:
@@ -267,6 +272,7 @@ def render_groups(
             container_key="group_project_detail",
             manual_container_key="group_project_manual",
             on_view_group=on_view_group,
+            on_refresh_project=on_refresh_project,
         )
 
 
@@ -279,6 +285,7 @@ def render_compare(
     memberships: list[dict[str, str]],
     shortlist_rows: list[dict[str, str]],
     on_open_project=None,
+    on_refresh_projects: Callable[[list[str]], None] | None = None,
 ) -> None:
     st.subheader("Compare projects")
     if profile_current.empty or all_current.empty:
@@ -288,13 +295,20 @@ def render_compare(
     if active_portfolio_id == MASTER_PORTFOLIO_ID:
         active_sets = {
             str(row["source_project_id"]): str(row.get("project_set") or "general")
-            for _, row in all_current.iterrows()
+            for row in shortlist_rows
+            if row.get("active") == "Yes"
         }
     else:
+        active_project_codes = {
+            row["source_project_id"]
+            for row in shortlist_rows
+            if row.get("active") == "Yes"
+        }
         active_sets = {
             row["source_project_id"]: row["project_set"]
             for row in memberships
             if row["portfolio_id"] == active_portfolio_id
+            and row["source_project_id"] in active_project_codes
         }
     label_by_code = {
         str(row["source_project_id"]): (
@@ -303,6 +317,36 @@ def render_compare(
         )
         for _, row in options.iterrows()
     }
+
+    comparator_set_codes = [
+        code for code, project_set in active_sets.items() if project_set == "comparator_set"
+    ]
+    current_dates = {
+        str(row["source_project_id"]): str(row.get("snapshot_date") or "")
+        for _, row in all_current.iterrows()
+    }
+    stale_comparator_codes = [
+        code
+        for code in comparator_set_codes
+        if current_dates.get(code) != date.today().isoformat()
+    ]
+    if on_refresh_projects is not None and comparator_set_codes:
+        refresh_column, refresh_note = st.columns([1, 3])
+        if refresh_column.button(
+            "Refresh Comparator Set",
+            disabled=not stale_comparator_codes,
+            width="stretch",
+        ):
+            on_refresh_projects(stale_comparator_codes)
+            st.rerun()
+        refresh_note.caption(
+            "All Comparator Set projects have been refreshed today."
+            if not stale_comparator_codes
+            else (
+                f"{len(stale_comparator_codes):,} of "
+                f"{len(comparator_set_codes):,} project(s) need today's observation."
+            )
+        )
 
     reporting_codes = list(
         profile_current.loc[

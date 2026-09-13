@@ -5,7 +5,12 @@ from pathlib import Path
 import streamlit as st
 
 from teduh_monitor.config import Settings, project_root
-from teduh_monitor.monitor import alerts_path, current_metrics_path, history_csv_path
+from teduh_monitor.monitor import (
+    alerts_path,
+    current_metrics_path,
+    history_csv_path,
+    refresh_projects,
+)
 from teduh_monitor.portfolios import (
     load_portfolio_memberships,
     load_portfolios,
@@ -95,6 +100,32 @@ def open_project(project_code: str) -> None:
     st.switch_page(projects_page)
 
 
+def refresh_selected_projects(project_codes: list[str]) -> None:
+    try:
+        with st.spinner(f"Refreshing {len(project_codes):,} selected TEDUH project(s)…"):
+            result = refresh_projects(
+                SETTINGS,
+                project_codes,
+                progress=lambda _: None,
+            )
+        if result["project_count"]:
+            message = f"Refreshed {result['project_count']:,} TEDUH project(s)."
+        else:
+            message = "No request sent; the selected project data was already refreshed today."
+        previous_notice = st.session_state.get("app_notice")
+        st.session_state["app_notice"] = (
+            f"{previous_notice} {message}" if previous_notice else message
+        )
+    except Exception as exc:
+        st.session_state["app_error"] = (
+            f"Selected TEDUH refresh failed; previous valid metrics were preserved. {exc}"
+        )
+
+
+def refresh_project(project_code: str) -> None:
+    refresh_selected_projects([project_code])
+
+
 def show_my_portfolio() -> None:
     render_my_portfolio(
         profile_current,
@@ -102,6 +133,7 @@ def show_my_portfolio() -> None:
         profile_alert_rows,
         portfolio_name=portfolio_names[selected_portfolio],
         on_view_group=open_group,
+        on_refresh_project=refresh_project,
     )
 
 
@@ -111,6 +143,7 @@ def show_groups() -> None:
         history,
         requested_group=st.session_state.pop("selected_group", None),
         on_view_group=open_group,
+        on_refresh_project=refresh_project,
     )
 
 
@@ -123,11 +156,17 @@ def show_compare() -> None:
         memberships=memberships,
         shortlist_rows=shortlist_rows,
         on_open_project=open_project,
+        on_refresh_projects=refresh_selected_projects,
     )
 
 
 def show_projects() -> None:
-    render_all_projects(current, history, on_view_group=open_group)
+    render_all_projects(
+        current,
+        history,
+        on_view_group=open_group,
+        on_refresh_project=refresh_project,
+    )
 
 
 def show_alerts() -> None:
@@ -150,15 +189,29 @@ def show_tracked_projects() -> None:
         shortlist_rows,
         registry_name_by_code,
         include_refresh=False,
+        current_snapshot_by_code={
+            str(row.get("source_project_id") or ""): str(row.get("snapshot_date") or "")
+            for row in current_rows
+        },
+        on_refresh_project=refresh_project,
     )
 
 
 def show_add_or_edit() -> None:
-    render_add_or_edit(SETTINGS, shortlist_rows, registry_name_by_code)
+    render_add_or_edit(
+        SETTINGS,
+        shortlist_rows,
+        registry_name_by_code,
+        on_project_added=refresh_project,
+    )
 
 
 def show_discovery() -> None:
-    render_discovery(SETTINGS, shortlist_rows)
+    render_discovery(
+        SETTINGS,
+        shortlist_rows,
+        on_project_added=refresh_project,
+    )
 
 
 def show_refresh() -> None:
