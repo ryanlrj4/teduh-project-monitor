@@ -276,4 +276,3 @@ The existing Python code can be treated as a reference implementation for the TE
 - [`docs/METRIC_DEFINITIONS.md`](docs/METRIC_DEFINITIONS.md) — calculation logic.
 - [`docs/SOURCE_AUDIT.md`](docs/SOURCE_AUDIT.md) — endpoint and source-quality analysis.
 - [`docs/DESIGN_REFERENCE.md`](docs/DESIGN_REFERENCE.md) — interface tokens and styling rationale.
-- [`docs/MODERNISATION_TECHNICAL_PITCH.md`](docs/MODERNISATION_TECHNICAL_PITCH.md) — initial enterprise implementation considerations.
