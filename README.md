@@ -1,46 +1,158 @@
-# TEDUH Regional Project Monitor
+# TEDUH Project Monitor
 
-This is a local, beginner-friendly monitoring dashboard for selected private-housing projects across supported Malaysian regions. It reads the public TEDUH JSON API, keeps dated observations, and highlights sales, construction, and status risks without requiring a database server or cloud account.
+Working proof of concept for monitoring selected Malaysian private-housing projects using the public JSON endpoints behind KPKT's TEDUH portal.
 
-The shortlist contains the authorized Kuala Lumpur comparison set and user-selected tracked projects in the supported regions. It contains only public TEDUH identifiers/facts and permitted local mappings. It does **not** contain bank financing information, CHGP pricing, analyst notes, comparison reasoning, or other proprietary analysis.
+The application maintains a controlled project register, retrieves current TEDUH project and unit data, calculates monitoring metrics, preserves dated observations, generates deterministic alerts and presents the results through Streamlit.
 
-## Start the dashboard
+## Status and scope
 
-Double-click `run_dashboard.bat`.
+- Local, file-backed proof of concept; not a production service or system of record.
+- Python 3.11+ and Streamlit.
+- Supported regions: Kuala Lumpur, Penang, Selangor, Johor and Malacca (`Melaka` in TEDUH).
+- HIMS unit-data eligibility boundary: `2022-01-01`.
+- Current transformation version: `1.5.2`.
+- No runtime AI dependency. Retrieval, validation, calculations and alerts are deterministic.
+- No customer, facility, financing, collateral, credit-decision or internal risk data is required.
 
-The dashboard opens locally in your browser. Its sidebar is organised around the RM workflow:
+The repository contains public TEDUH facts plus locally maintained project names, parent-group mappings, project classifications, portfolio membership and audit identities. Those local fields may still require internal handling controls.
 
-- **My Portfolio** — attention items, recent movements and the active profile's Reporting Set.
-- **Groups** — search and roll up developments mapped to the same parent group or registered developer.
-- **Compare** — find nearby candidates, add them to a comparison or Comparator Set, and compare up to six projects.
-- **Projects** — search the full tracked-project library, open details, and add, reclassify or remove a project in the active profile.
-- **Alerts** — review business-facing status, permit, developer, commercial-progress and data-quality exceptions.
-- **Manage** — maintain profiles, tracked projects, Discovery, refresh/data quality and the audit log.
+## Source endpoints
 
-Portfolio profiles are saved working views, not security roles. The Admin / Master Portfolio uses the full tracked-project register; a small Test Portfolio demonstrates a separate project selection and classification without duplicating TEDUH observations.
+The client uses the JSON endpoints consumed by the public TEDUH frontend:
 
-The dashboard supports both full and targeted refreshes. A newly added active project is fetched immediately; project details and Tracked projects can refresh one stale project; and Compare can refresh stale Comparator Set projects. A project with an observation from the current local calendar day is skipped. `run_weekly_refresh.bat` is the safe Monday-oriented scheduler command: it refreshes only when the current Monday-based week has no successful observation. Registering the command with Windows Task Scheduler is a deployment step; the computer must be on and connected when it runs.
+```text
+GET https://teduh.kpkt.gov.my/api/projek-swasta
+GET https://teduh.kpkt.gov.my/api/projek-swasta/{project_code}
+GET https://teduh.kpkt.gov.my/api/unit-projek-swasta/{project_code}
+GET https://teduh.kpkt.gov.my/api/negeri
+GET https://teduh.kpkt.gov.my/api/daerah-by-negeri
+GET https://teduh.kpkt.gov.my/api/bandar-by-daerah
+```
 
-## What is tracked
+The search endpoint is paginated and filtered by state and project status. Project detail and unit endpoints use TEDUH's stable project code, for example `20209-1`.
 
-- Regions: `Kuala Lumpur` (`state=14`), `Penang` (`state=07`), `Selangor` (`state=10`), `Johor` (`state=01`), and `Malacca` / TEDUH `Melaka` (`state=04`)
-- HIMS eligibility cutoff: `2022-01-01`
-- Active statuses: `Belum Mula`, `Lancar`, `Sakit`, `Lewat`
-- Completed statuses: `Siap Dengan CCC`, `Siap Dengan CFO`
-- Normal refresh: active projects in `config/shortlist.csv` only
-- Discovery: catalogue metadata only; no unit-level downloads until a project is added and refreshed
+There is no credential or API key. The client performs sequential GET requests with a default 1.1-second minimum interval, a 60-second timeout and three retry attempts. HTTP errors, rate limits, HTML responses and missing expected JSON keys are treated as source failures.
 
-Legacy projects are excluded when their first SPA date, or permit start fallback, predates the HIMS cutoff. This prevents partial post-2022 rows from being presented as a complete project history.
+## Data flow
 
-CCC/CFO obtained remains a Yes/No field. `Yes` is supported by a completed-with-CCC/CFO project status or explicit component evidence. When TEDUH supplies component dates, the project details also show the latest valid CCC/CFO date and VP date separately.
+```text
+TEDUH JSON endpoints
+        │
+        ▼
+Rate-limited client and dated raw cache
+        │
+        ▼
+Normalization and deterministic metric calculation
+        │
+        ▼
+Schema, coverage and consistency validation
+        │
+        ▼
+Atomic publication of current snapshot, history and alerts
+        │
+        ▼
+Streamlit monitoring interface
+```
 
-Project details distinguish TEDUH facts, locally maintained fields, application-generated timestamps, and deterministic calculations. The first view prioritises unit and value sales, construction, typical listed unit pricing, recorded SPA pricing, latest movement and weekly trends. Additional sections show remaining inventory by type/quota, recorded price realisation, contractual VP changes, component construction, permit/developer licensing, and sales calculated separately for each TEDUH unit group. Neutral component labels are used when TEDUH does not provide a block name. Actual VP remains available in the contractual detail but is not a headline measure unless an exception requires attention.
+### Full refresh
 
-Typical unit price uses the median valid TEDUH listed price, with the middle 50% shown as the typical range. High- and low-priced units remain in total listed GDV; they are not silently removed. Price-distribution and recorded-SPA unit metrics require a refresh created with transformation version 1.5.1 or later.
+1. Load active projects from `config/shortlist.csv`.
+2. Retrieve project detail and unit data for every active project.
+3. Validate region, HIMS eligibility, response structure and required fields.
+4. Calculate sales, value, pricing, construction, completion and coverage metrics.
+5. Validate the complete staged result.
+6. Atomically replace the current snapshot only after all active projects succeed.
+7. Merge one observation per project/date into history and rebuild alerts.
 
-## First-time installation
+A failed full refresh does not replace the previous valid snapshot.
 
-Python 3.11 or newer is required. In PowerShell:
+### Targeted refresh
+
+Targeted refreshes retrieve only selected active projects and merge validated rows into the existing snapshot. Unrelated rows remain unchanged. A project already observed on the current local calendar date is skipped.
+
+### Discovery
+
+Discovery downloads catalogue metadata for one region and caches it for the day. It does not retrieve unit-level data until a project is added to the tracked register. Discovery is separate from the normal monitoring refresh.
+
+## Calculated outputs
+
+The main deterministic outputs include:
+
+- sold, unsold and total units;
+- unit-sales percentage;
+- estimated value sold and value-sold percentage;
+- potential listed GDV and remaining listed value;
+- median and average listed price per unit;
+- listed-price interquartile range;
+- recorded SPA value and price-realisation measures;
+- construction percentage and confidence;
+- CCC/CFO flag and available completion dates;
+- component/block-level sales;
+- remaining inventory by component and quota category;
+- sales-versus-construction gap;
+- dated changes and weekly trends.
+
+Metric definitions and null-handling rules are documented in [`docs/METRIC_DEFINITIONS.md`](docs/METRIC_DEFINITIONS.md). Field-level lineage is documented in [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md).
+
+## Application functions
+
+- **My Portfolio:** Reporting Set summary, exceptions and latest movements.
+- **Groups:** aggregate projects by locally mapped parent group or TEDUH registered developer.
+- **Compare:** anchor-project benchmarks, nearby candidates and multi-project comparison.
+- **Projects:** searchable master tracked-project library and detailed project view.
+- **Alerts:** deterministic status, permit, developer, progress and data-quality exceptions.
+- **Profiles:** saved project selections and classifications over the shared TEDUH dataset.
+- **Tracked projects:** master register, targeted refresh and project removal.
+- **Add or edit:** controlled local metadata plus automatic TEDUH region detection.
+- **Discovery:** on-demand regional catalogue scan.
+- **Refresh and data quality:** full refresh execution, progress and recent-run status.
+- **Audit log:** additions, removals and local field changes.
+
+Profiles are working views, not authorization boundaries. The Admin / Master Portfolio represents the complete tracked library.
+
+## Repository structure
+
+```text
+src/teduh_monitor/
+  app.py               Streamlit entry point and page routing
+  sources.py           TEDUH HTTP client, caching and source validation
+  collection.py        Per-project collection workflow
+  normalize.py         Text, date, price, state and status normalization
+  metrics.py           Deterministic project and unit calculations
+  validate.py          Published-record validation
+  monitor.py           Full/targeted refresh, publication, history and alerts
+  discovery.py         Regional catalogue discovery
+  shortlist.py         Tracked-project register and audit events
+  portfolios.py        Profile definitions and project membership
+  refresh_status.py    Refresh-run state and recent-run history
+  schedule.py          Monday-based refresh-due check
+  storage.py           Atomic CSV, JSON and Parquet writes
+  schema.py            Output field definitions
+  ui/                   Streamlit pages, components, formatting and styles
+
+config/
+  shortlist.csv         Master tracked-project register and local metadata
+  portfolios.csv        Profile definitions
+  portfolio_projects.csv
+                        Profile membership and per-profile classification
+
+data/
+  raw/                  Dated API response cache; ignored by Git
+  processed/            Current snapshot, alerts and local refresh state
+  history/              Append/merge dated observations
+  audit/                Local project-change audit log
+```
+
+## Installation
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+
+Windows PowerShell:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -48,51 +160,121 @@ py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev]"
 ```
 
-No passwords, API keys, `.env` file, Supabase, or PostgreSQL are required.
+Runtime dependencies are declared in `pyproject.toml`: Streamlit, HTTPX and DuckDB. Pytest is the only development dependency.
 
-## First-time installation on macOS
+## Run locally
 
-The easiest route for a beginner is to open the cloned project folder in Codex and ask it to read `HANDOFF.md`, set up the project for macOS, run the tests, and launch the dashboard. Codex should create a fresh Mac `.venv`; the Windows environment is intentionally not transferred.
+macOS/Linux:
 
-After that one-time setup, double-click `run_dashboard.command` to start the local dashboard. The Mac runs its own `http://localhost:8501`; the Windows localhost process is not transferred through GitHub.
-
-## Useful commands
-
-```powershell
-# Refresh only the active shortlist
-.venv\Scripts\python -m teduh_monitor.cli refresh
-
-# Safe command for a weekly scheduler; does nothing when this week is already current
-.venv\Scripts\python -m teduh_monitor.cli refresh-if-due
-
-# Build/reuse a once-daily regional discovery catalogue
-.venv\Scripts\python -m teduh_monitor.cli discover --region "Penang"
-
-# Verify the current shortlist and history outputs
-.venv\Scripts\python -m teduh_monitor.cli validate-monitor
-
-# Run fixed tests without accessing TEDUH
-.venv\Scripts\python -m pytest
+```bash
+.venv/bin/python -m streamlit run src/teduh_monitor/app.py
 ```
 
-The older KL full-universe data proof is quarantined behind the explicit
-`legacy-kl-full-catalog` and `legacy-kl-validate` commands. Neither command is
-part of normal monitoring.
+Windows:
 
-## Main files
+```powershell
+.venv\Scripts\python -m streamlit run src/teduh_monitor/app.py
+```
 
-- Editable shortlist: `config/shortlist.csv`
-- Current CSV: `data/processed/shortlist_current.csv`
-- Current Parquet: `data/processed/shortlist_current.parquet`
-- Dated history: `data/history/shortlist_history.csv` and `.parquet`
-- Alerts: `data/processed/shortlist_alerts.csv`
-- Latest refresh status and recent-run history: ignored local JSON files in `data/processed/`
-- Project-change audit log: `data/audit/project_changes.csv` (created on the first new addition or edit)
-- Operating guide: `docs/OPERATING_GUIDE.md`
-- Modernisation technical pitch: `docs/MODERNISATION_TECHNICAL_PITCH.md`
+Convenience launchers are also provided:
 
-## Safety behavior
+- `run_dashboard.command` for macOS;
+- `run_dashboard.bat` for Windows.
 
-A full refresh verifies every active project before replacing the previous valid files. A targeted refresh validates the requested projects and merges only those rows into the current snapshot and history. HTML/error pages, missing required fields, invalid project codes, state/region mismatches, pre-HIMS projects, and incomplete refreshes stop publication rather than turning missing facts into zeroes. Unrelated projects and the previous valid data remain intact after a targeted failure. The dashboard retains the last full run's status after rerun and explicitly states when a failed full attempt preserved the previous valid snapshot.
+The default local address is `http://localhost:8501`.
 
-The tool is a local analytical aid, not a system of record. Keep customer-confidential information, facility balances, credit decisions, and other bank-restricted data outside its free-text notes unless the environment has been approved for that information.
+## Operational commands
+
+The examples below use the POSIX interpreter path. Replace `.venv/bin/python` with `.venv\Scripts\python` on Windows.
+
+```bash
+# Full active-register refresh
+.venv/bin/python -m teduh_monitor.cli refresh
+
+# Refresh only when the current Monday-based week has no observation
+.venv/bin/python -m teduh_monitor.cli refresh-if-due
+
+# Build or reuse a same-day regional discovery catalogue
+.venv/bin/python -m teduh_monitor.cli discover --region "Selangor"
+
+# Validate current CSV/Parquet alignment, active-project coverage and history keys
+.venv/bin/python -m teduh_monitor.cli validate-monitor
+
+# Run the automated suite without calling TEDUH
+.venv/bin/python -m pytest
+```
+
+`run_weekly_refresh.bat` wraps `refresh-if-due` for Windows Task Scheduler. Scheduling is external to the application.
+
+The `legacy-kl-full-catalog` and `legacy-kl-validate` commands are quarantined research workflows and are not part of normal monitoring.
+
+## Persisted state
+
+| Path | Purpose | Git policy |
+|---|---|---|
+| `config/shortlist.csv` | Master project register and local fields | Tracked |
+| `config/portfolios.csv` | Profile definitions | Tracked |
+| `config/portfolio_projects.csv` | Profile memberships/classifications | Tracked |
+| `data/processed/shortlist_current.csv` | Current published snapshot | Tracked |
+| `data/processed/shortlist_current.parquet` | Current typed analytical copy | Regenerable, ignored |
+| `data/history/shortlist_history.csv` | Dated observations | Tracked |
+| `data/history/shortlist_history.parquet` | Typed history copy | Regenerable, ignored |
+| `data/processed/shortlist_alerts.csv` | Current deterministic alerts | Tracked |
+| `data/audit/project_changes.csv` | Local metadata audit events | Tracked |
+| `data/raw/teduh/{date}/` | Raw JSON and request metadata | Regenerable, ignored |
+| `data/processed/refresh_status.json` | Latest local refresh status | Local, ignored |
+| `data/processed/refresh_runs.json` | Recent local refresh history | Local, ignored |
+
+CSV files use UTF-8 with BOM for compatibility with common Windows tooling. Parquet outputs are generated with DuckDB.
+
+## Validation and failure controls
+
+- Expected JSON content type and top-level keys are checked before processing.
+- Project state must match the configured region.
+- Projects before the HIMS boundary are not published as comparable unit datasets.
+- Unit counts, sales-status vocabulary, percentages, duplicate identifiers and coverage are validated.
+- Missing values remain null; source failure is not converted to zero.
+- Full publication is all-or-nothing.
+- Targeted publication replaces only successfully validated selected projects.
+- Writes use temporary files and atomic replacement.
+- History is unique on `(snapshot_date, source_project_id)`.
+- Retrieval timestamp and TEDUH displayed data-through date are stored separately.
+- Raw responses and request metadata are cached by observation date.
+
+Run `validate-monitor` after any manual data-file change and before release or deployment.
+
+## Productionisation requirements
+
+The current implementation is intentionally optimized for a local proof of concept. An internal multi-user deployment should replace or formalize the following:
+
+1. **Identity and authorization** — Microsoft Entra ID/approved SSO, role-based access and server-derived audit identity.
+2. **Persistent storage** — approved relational database for configuration, observations, profiles and audit events; object storage for retained raw responses if required.
+3. **Job execution** — centrally managed scheduler or worker independent of the Streamlit process.
+4. **Concurrency** — transactional writes and locking for simultaneous users and refresh jobs.
+5. **Hosting** — approved application/container platform, network egress policy and TLS termination.
+6. **Observability** — centralized logs, metrics, job alerts, failure notifications and retention policy.
+7. **Source governance** — confirmation of acceptable automated use, request limits, ownership and response-schema change management for TEDUH.
+8. **Data governance** — classification of local project mappings, profile membership, user identity and audit history.
+9. **Operational ownership** — named product owner, technical owner, support process, deployment pipeline and recovery procedure.
+10. **User interface** — retain or rebuild Streamlit according to the approved internal platform and accessibility standards.
+
+The existing Python code can be treated as a reference implementation for the TEDUH connector, business rules, validation controls, calculations and acceptance tests even if the production UI or persistence layer is replaced.
+
+## Known limitations
+
+- File-backed state is suitable for one local writer, not concurrent multi-user operation.
+- Profile selection is not access control.
+- Audit identity is user-entered in the proof of concept.
+- Refresh availability depends on the public TEDUH service and its undocumented internal JSON contract.
+- The application has no source SLA and must be maintained if TEDUH changes its schema or endpoints.
+- `source_dataset_as_of` follows TEDUH's frontend display convention and is not a transaction timestamp for every unit row.
+- Historical trends begin when this application first records a project; the system does not reconstruct earlier TEDUH states.
+- Parent-group mappings and project classifications are locally maintained.
+
+## Supporting documentation
+
+- [`docs/OPERATING_GUIDE.md`](docs/OPERATING_GUIDE.md) — user and operator workflow.
+- [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) — field definitions and provenance.
+- [`docs/METRIC_DEFINITIONS.md`](docs/METRIC_DEFINITIONS.md) — calculation logic.
+- [`docs/SOURCE_AUDIT.md`](docs/SOURCE_AUDIT.md) — endpoint and source-quality analysis.
+- [`docs/MODERNISATION_TECHNICAL_PITCH.md`](docs/MODERNISATION_TECHNICAL_PITCH.md) — initial enterprise implementation considerations.

@@ -1,17 +1,18 @@
 ﻿snapshot_date,region,severity,alert_code,source_project_id,display_name,message
-2026-09-13,Kuala Lumpur,critical,status_sakit,4131-139,SOLASTA DUTAMAS,TEDUH status: Sakit
-2026-09-13,Kuala Lumpur,critical,status_sakit,30648-1,Vila Setara,TEDUH status: Sakit
-2026-09-13,Penang,high,status_lewat,30555-1,Eden at Botanica CT,TEDUH status: Lewat
-2026-09-13,Kuala Lumpur,high,permit_expired,30250-2,Residensi Aurum,Advertising and sales permit expired
-2026-09-13,Kuala Lumpur,info,construction_unavailable,30777-1,Asa Residence,Potential double-counted construction groups
-2026-09-13,Kuala Lumpur,info,construction_unavailable,31332-1,Binastra Cochrane,Potential double-counted construction groups
-2026-09-13,Kuala Lumpur,info,sales_lags_construction,30755-1,Golden Crown Residence,Unit sales trail construction progress by 84.9482 percentage points
-2026-09-15,Penang,info,construction_unavailable,20091-2,Ideal Venice Residency,Potential double-counted construction groups
-2026-09-13,Kuala Lumpur,info,permit_expiring,11611-2,Miranda Hills,Current advertising and sales permit expires in 76 day(s)
-2026-09-13,Kuala Lumpur,info,construction_unavailable,30667-1,Park Green Bukit Jalil,Potential double-counted construction groups
-2026-09-14,Selangor,info,permit_expiring,30572-1,Residensi Pinnacle Ara Damansara,Current advertising and sales permit expires in 75 day(s)
-2026-09-13,Kuala Lumpur,info,construction_unavailable,4131-139,SOLASTA DUTAMAS,Potential double-counted construction groups
-2026-09-13,Kuala Lumpur,info,construction_unavailable,19221-3,Stellaris,Potential double-counted construction groups
-2026-09-13,Penang,info,sales_lags_construction,14300-2,The Alton,Unit sales trail construction progress by 32.2981 percentage points
-2026-09-13,Kuala Lumpur,info,construction_unavailable,30513-1,Tuju Residence,Potential double-counted construction groups
-2026-09-13,Kuala Lumpur,info,permit_expiring,30513-1,Tuju Residence,Current advertising and sales permit expires in 87 day(s)
+2026-09-22,Kuala Lumpur,critical,status_sakit,4131-139,SOLASTA DUTAMAS,TEDUH status: Sakit
+2026-09-22,Kuala Lumpur,critical,status_sakit,30648-1,Vila Setara,TEDUH status: Sakit
+2026-09-22,Penang,high,status_lewat,30555-1,Eden at Botanica CT,TEDUH status: Lewat
+2026-09-22,Kuala Lumpur,high,permit_expired,30250-2,Residensi Aurum,Advertising and sales permit expired
+2026-09-22,Kuala Lumpur,info,construction_unavailable,30777-1,Asa Residence,Potential double-counted construction groups
+2026-09-22,Kuala Lumpur,info,construction_unavailable,31332-1,Binastra Cochrane,Potential double-counted construction groups
+2026-09-22,Kuala Lumpur,info,sales_lags_construction,30755-1,Golden Crown Residence,Unit sales trail construction progress by 83.3155 percentage points
+2026-09-22,Penang,info,construction_unavailable,20091-2,Ideal Venice Residency,Potential double-counted construction groups
+2026-09-22,Kuala Lumpur,info,permit_expiring,11611-2,Miranda Hills,Current advertising and sales permit expires in 67 day(s)
+2026-09-22,Kuala Lumpur,info,construction_unavailable,30667-1,Park Green Bukit Jalil,Potential double-counted construction groups
+2026-09-22,Selangor,info,permit_expiring,30572-1,Residensi Pinnacle Ara Damansara,Current advertising and sales permit expires in 67 day(s)
+2026-09-22,Kuala Lumpur,info,construction_unavailable,4131-139,SOLASTA DUTAMAS,Potential double-counted construction groups
+2026-09-22,Kuala Lumpur,info,construction_unavailable,19221-3,Stellaris,Potential double-counted construction groups
+2026-09-22,Penang,info,sales_lags_construction,30668-1,Taman Tan Sai Gin,Unit sales trail construction progress by 68.6554 percentage points
+2026-09-22,Penang,info,sales_lags_construction,14300-2,The Alton,Unit sales trail construction progress by 32.2981 percentage points
+2026-09-22,Kuala Lumpur,info,construction_unavailable,30513-1,Tuju Residence,Potential double-counted construction groups
+2026-09-22,Kuala Lumpur,info,permit_expiring,30513-1,Tuju Residence,Current advertising and sales permit expires in 78 day(s)
