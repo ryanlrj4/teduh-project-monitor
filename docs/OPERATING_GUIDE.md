@@ -77,17 +77,6 @@ Current-state alerts include:
 
 After more than one dated observation, change alerts can also flag status changes, sold-unit decreases, construction decreases, and a new CCC/CFO result. Alerts are review prompts, not automated credit conclusions.
 
-## Scale bands
-
-Potential listed GDV is used only as an indicative screening field:
-
-- Below RM50 million: below the working Commercial Banking floor.
-- RM50 million to below RM100 million: include.
-- RM100 million to RM500 million: include.
-- Above RM500 million: include for Commercial Banking/Large Corp review.
-- Missing or low-confidence value: review manually; never automatically exclude.
-
-The calculation is not audited revenue, official developer GDV, nett pricing, or a credit recommendation.
 
 ## Source and reuse boundary
 
