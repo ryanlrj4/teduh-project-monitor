@@ -206,8 +206,6 @@ The examples below use the POSIX interpreter path. Replace `.venv/bin/python` wi
 
 `run_weekly_refresh.bat` wraps `refresh-if-due` for Windows Task Scheduler. Scheduling is external to the application.
 
-The `legacy-kl-full-catalog` and `legacy-kl-validate` commands are quarantined research workflows and are not part of normal monitoring.
-
 ## Persisted state
 
 | Path | Purpose | Git policy |
@@ -277,4 +275,5 @@ The existing Python code can be treated as a reference implementation for the TE
 - [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) — field definitions and provenance.
 - [`docs/METRIC_DEFINITIONS.md`](docs/METRIC_DEFINITIONS.md) — calculation logic.
 - [`docs/SOURCE_AUDIT.md`](docs/SOURCE_AUDIT.md) — endpoint and source-quality analysis.
+- [`docs/DESIGN_REFERENCE.md`](docs/DESIGN_REFERENCE.md) — interface tokens and styling rationale.
 - [`docs/MODERNISATION_TECHNICAL_PITCH.md`](docs/MODERNISATION_TECHNICAL_PITCH.md) — initial enterprise implementation considerations.

@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 if [ ! -x ".venv/bin/python" ]; then
   echo "The Mac Python environment has not been prepared yet."
-  echo "Open this folder in Codex and ask it to read HANDOFF.md and complete the Mac setup."
+  echo "Follow the installation steps in README.md, then run this launcher again."
   echo
   read -r -p "Press Return to close this window."
   exit 1

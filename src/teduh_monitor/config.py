@@ -59,7 +59,6 @@ class Settings:
     timeout_seconds: float = 60.0
     retries: int = 3
     minimum_expected_projects: int = 100
-    major_count_decrease_ratio: float = 0.70
 
     @property
     def raw_dir(self) -> Path:
@@ -72,11 +71,6 @@ class Settings:
     @property
     def processed_dir(self) -> Path:
         return self.root / "data" / "processed"
-
-    @property
-    def docs_dir(self) -> Path:
-        return self.root / "docs"
-
 
 def project_root() -> Path:
     return Path(__file__).resolve().parents[2]

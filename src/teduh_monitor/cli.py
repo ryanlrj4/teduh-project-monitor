@@ -5,13 +5,11 @@ import json
 
 from .config import (
     DEFAULT_REGION,
-    HIMS_UNIT_DATA_START_ISO,
     REGION_CONFIGS,
     Settings,
     project_root,
 )
 from .discovery import run_discovery
-from .full_catalog import run_full_catalog_proof
 from .monitor import (
     current_metrics_path,
     current_parquet_path,
@@ -110,73 +108,6 @@ def _validate_monitor(_: argparse.Namespace) -> int:
     return 0
 
 
-def _legacy_kl_full_catalog(args: argparse.Namespace) -> int:
-    result = run_full_catalog_proof(_settings(args.delay), force=args.force)
-    summary = {
-        "snapshot_date": result["snapshot_date"],
-        "catalog_project_count": result["catalog_project_count"],
-        "project_count": result["project_count"],
-        "excluded_legacy_projects": result["excluded_legacy_projects"],
-        "status_counts": result["status_counts"],
-        "validation_project_ids": [
-            row["source_project_id"] for row in result["validation"]
-        ],
-        "outputs": {name: str(path) for name, path in result["paths"].items()},
-    }
-    print(json.dumps(summary, indent=2))
-    return 0
-
-
-def _validate_legacy_kl_outputs(_: argparse.Namespace) -> int:
-    root = project_root()
-    csv_path = root / "data" / "processed" / "kl_project_metrics_hims_eligible.csv"
-    parquet_path = root / "data" / "processed" / "kl_project_metrics_hims_eligible.parquet"
-    validation_path = root / "data" / "processed" / "kl_validation_sample_hims_eligible.csv"
-    for path in (csv_path, parquet_path, validation_path):
-        if not path.exists():
-            raise SystemExit(f"Missing legacy KL proof output: {path}")
-
-    csv_rows = read_csv(csv_path)
-    validation_rows = read_csv(validation_path)
-    parquet_rows = parquet_row_count(parquet_path)
-    if len(csv_rows) != parquet_rows:
-        raise SystemExit(f"CSV has {len(csv_rows)} rows but Parquet has {parquet_rows}")
-    if len(validation_rows) != 5:
-        raise SystemExit(
-            f"Legacy validation CSV has {len(validation_rows)} rows; expected exactly 5"
-        )
-
-    legacy_rows = [
-        row
-        for row in csv_rows
-        if not row.get("hims_project_reference_date")
-        or row["hims_project_reference_date"] < HIMS_UNIT_DATA_START_ISO
-    ]
-    if legacy_rows:
-        raise SystemExit(
-            f"Metrics CSV contains {len(legacy_rows)} rows before the HIMS cutoff "
-            f"{HIMS_UNIT_DATA_START_ISO}"
-        )
-    invalid_ccc = [
-        row for row in csv_rows if row.get("ccc_obtained") not in {"Yes", "No"}
-    ]
-    if invalid_ccc:
-        raise SystemExit(f"Metrics CSV contains {len(invalid_ccc)} invalid CCC flags")
-
-    forbidden_columns = {
-        "ccc_or_cfo_date",
-        "booked_or_reserved_units",
-        "unknown_sales_status_units",
-    }
-    present_forbidden = forbidden_columns.intersection(csv_rows[0] if csv_rows else {})
-    if present_forbidden:
-        raise SystemExit(
-            f"Metrics CSV still contains removed columns: {sorted(present_forbidden)}"
-        )
-    print(f"Verified {len(csv_rows)} legacy KL metric rows and 5 validation rows.")
-    return 0
-
-
 def _add_delay_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--delay",
@@ -223,23 +154,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     monitor_validation.set_defaults(func=_validate_monitor)
 
-    legacy_run = commands.add_parser(
-        "legacy-kl-full-catalog",
-        help="run the optional KL full-universe data proof",
-    )
-    legacy_run.add_argument(
-        "--force",
-        action="store_true",
-        help="ignore today's valid raw cache",
-    )
-    _add_delay_argument(legacy_run)
-    legacy_run.set_defaults(func=_legacy_kl_full_catalog)
-
-    legacy_validation = commands.add_parser(
-        "legacy-kl-validate",
-        help="verify optional KL full-universe proof outputs",
-    )
-    legacy_validation.set_defaults(func=_validate_legacy_kl_outputs)
     return parser
 
 

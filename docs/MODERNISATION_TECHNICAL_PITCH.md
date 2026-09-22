@@ -24,7 +24,7 @@
 ## What the prototype already demonstrates
 
 - Uses TEDUH's public JSON API rather than scraping webpage HTML.
-- Tracks 50 selected projects across Kuala Lumpur and Penang.
+- Tracks selected projects across Kuala Lumpur, Penang, Selangor, Johor and Malacca.
 - Separates projects into Reporting Set, Comparator Set and General.
 - Preserves local display names and parent-group mappings separately from TEDUH facts.
 - Shows units sold, sales percentage, construction percentage and TEDUH status.
@@ -155,7 +155,7 @@ No. TEDUH project status and bank credit status are separate. The application mu
 
 - Two or three Real Estate RMs
 - A selected number of Reporting Set projects and comparators
-- Kuala Lumpur and Penang
+- A controlled selection from the supported Malaysian regions
 - Two monthly monitoring cycles
 - Weekly automated refresh plus controlled manual refresh
 - No customer or financing information
@@ -250,4 +250,3 @@ No. It proves the workflow and technical feasibility. Production requires approv
 - [Microsoft Entra authentication for Azure SQL](https://learn.microsoft.com/en-us/azure/azure-sql/database/authentication-aad-overview?view=azuresql)
 - [Managed identities for Azure resources](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview-for-developers)
 - [Azure Key Vault authentication](https://learn.microsoft.com/en-us/azure/key-vault/general/authentication)
-

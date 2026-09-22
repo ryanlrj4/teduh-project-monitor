@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 from decimal import Decimal
 from typing import Any, Iterable
 
@@ -165,7 +164,3 @@ def require_no_errors(issues: Iterable[dict[str, str]]) -> None:
     if errors:
         preview = "; ".join(f"{item['source_project_id']}: {item['message']}" for item in errors[:5])
         raise ValueError(f"Validation found {len(errors)} error(s): {preview}")
-
-
-def issue_counts(issues: list[dict[str, str]]) -> Counter[str]:
-    return Counter(issue["code"] for issue in issues)

@@ -1,4 +1,3 @@
-from teduh_monitor.full_catalog import select_validation_sample
 from teduh_monitor.validate import validate_records
 
 
@@ -22,26 +21,6 @@ def record(code: str, status: str, reported: int, coverage: float, sold: int = 0
         "unknown_sales_status_units": 0,
         "construction_note": "No construction rows",
     }
-
-
-def test_exactly_five_selection() -> None:
-    records = [
-        record("A-1", "Belum Mula", 100, 100),
-        record("B-1", "Lancar", 200, 100, sold=50),
-        record("C-1", "Lancar", 300, 10),
-        record("D-1", "Lewat", 400, 80),
-        record("E-1", "Sakit", 500, 70),
-    ]
-    selected = select_validation_sample(records)
-    assert len(selected) == 5
-    assert [role for role, _ in selected] == [
-        "not_started",
-        "active_data_rich",
-        "active_mid_sales",
-        "delayed",
-        "sick",
-    ]
-    assert len({row["source_project_id"] for _, row in selected}) == 5
 
 
 def test_validation_detects_duplicate_projects_and_bad_percentage() -> None:

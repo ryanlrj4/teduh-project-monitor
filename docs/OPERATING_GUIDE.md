@@ -4,7 +4,7 @@
 
 The application is a focused local monitor:
 
-1. Start with the authorized Kuala Lumpur comparison set and selected reporting-set projects in other regions.
+1. Start with the controlled master register of projects in the configured regions.
 2. Refresh only projects marked active.
 3. Save one observation per project per local calendar day.
 4. Show current metrics, dated history, and risk alerts.

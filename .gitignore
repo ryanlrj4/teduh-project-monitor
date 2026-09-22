@@ -10,17 +10,13 @@ htmlcov/
 .vscode/
 tmp/
 
-data/raw/**
-!data/raw/.gitkeep
-data/interim/**
-!data/interim/.gitkeep
+data/raw/
+data/interim/
 
-# Keep only the compact, human-readable dashboard state in GitHub. Optional
-# legacy KL proof outputs and Parquet copies can be regenerated when required.
+# Keep only the compact, human-readable dashboard state in GitHub. Parquet
+# copies and local refresh state can be regenerated when required.
 data/processed/*
-!data/processed/.gitkeep
 !data/processed/shortlist_current.csv
 !data/processed/shortlist_alerts.csv
 data/history/*
-!data/history/.gitkeep
 !data/history/shortlist_history.csv
