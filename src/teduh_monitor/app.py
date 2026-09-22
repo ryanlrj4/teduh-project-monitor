@@ -8,8 +8,10 @@ from teduh_monitor.config import Settings, project_root
 from teduh_monitor.monitor import (
     alerts_path,
     current_metrics_path,
+    detect_project_region,
     history_csv_path,
     refresh_projects,
+    remove_tracked_project,
 )
 from teduh_monitor.portfolios import (
     load_portfolio_memberships,
@@ -19,7 +21,11 @@ from teduh_monitor.portfolios import (
 )
 from teduh_monitor.shortlist import load_audit_log, load_shortlist
 from teduh_monitor.ui.data import apply_shortlist_metadata, dataframe, read_csv
-from teduh_monitor.ui.formatting import display_date, display_timestamp
+from teduh_monitor.ui.formatting import (
+    display_date,
+    display_timestamp,
+    project_choice_label,
+)
 from teduh_monitor.ui.pages import (
     render_add_or_edit,
     render_alerts,
@@ -93,10 +99,7 @@ def open_group(group_name: str) -> None:
 def open_project(project_code: str) -> None:
     match = current[current["source_project_id"].astype(str) == str(project_code)]
     if not match.empty:
-        row = match.iloc[0]
-        st.session_state["all_projects_name_search"] = str(
-            row.get("display_name") or row.get("project_name") or project_code
-        )
+        st.session_state["all_projects_project_choice"] = str(project_code)
     st.switch_page(projects_page)
 
 
@@ -124,6 +127,28 @@ def refresh_selected_projects(project_codes: list[str]) -> None:
 
 def refresh_project(project_code: str) -> None:
     refresh_selected_projects([project_code])
+
+
+def resolve_project_region(project_code: str) -> str:
+    try:
+        return detect_project_region(SETTINGS, project_code)
+    except Exception as exc:
+        raise ValueError(f"Could not determine the project's region from TEDUH: {exc}") from exc
+
+
+def remove_project(project_code: str, changed_by: str) -> None:
+    try:
+        removed = remove_tracked_project(
+            SETTINGS,
+            project_code,
+            changed_by=changed_by,
+        )
+        st.session_state["audit_actor"] = changed_by
+        st.session_state["app_notice"] = (
+            f"Removed {removed['display_name'] or project_code} from the tracked library."
+        )
+    except Exception as exc:
+        st.session_state["app_error"] = str(exc)
 
 
 def show_my_portfolio() -> None:
@@ -164,6 +189,11 @@ def show_projects() -> None:
     render_all_projects(
         current,
         history,
+        settings=SETTINGS,
+        active_portfolio_id=selected_portfolio,
+        active_portfolio_name=portfolio_names[selected_portfolio],
+        memberships=memberships,
+        shortlist_rows=shortlist_rows,
         on_view_group=open_group,
         on_refresh_project=refresh_project,
     )
@@ -194,6 +224,7 @@ def show_tracked_projects() -> None:
             for row in current_rows
         },
         on_refresh_project=refresh_project,
+        on_remove_project=remove_project,
     )
 
 
@@ -203,6 +234,7 @@ def show_add_or_edit() -> None:
         shortlist_rows,
         registry_name_by_code,
         on_project_added=refresh_project,
+        resolve_project_region=resolve_project_region,
     )
 
 
@@ -275,38 +307,27 @@ navigation = st.navigation(
 if not current.empty:
     st.sidebar.divider()
     st.sidebar.markdown("### Find a project")
-    project_query = st.sidebar.text_input(
+    sidebar_project_rows = {
+        str(row["source_project_id"]): row
+        for _, row in current.sort_values(
+            ["display_name", "source_project_id"], na_position="last"
+        ).iterrows()
+    }
+    sidebar_project = st.sidebar.selectbox(
         "Project search",
-        placeholder="Name, code, group or developer",
-        key=f"global_project_search_{selected_portfolio}",
+        list(sidebar_project_rows),
+        index=None,
+        format_func=lambda code: project_choice_label(sidebar_project_rows[code]),
+        placeholder="Search name, code, group or developer",
+        key=f"global_project_choice_{selected_portfolio}",
         label_visibility="collapsed",
     )
-    if project_query.strip():
-        needle = project_query.strip().casefold()
-        searchable = current.copy()
-        search_columns = [
-            "source_project_id",
-            "display_name",
-            "project_name",
-            "parent_group",
-            "developer_name",
-        ]
-        matches = searchable[
-            searchable[search_columns]
-            .fillna("")
-            .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
-        ].sort_values("display_name")
-        if matches.empty:
-            st.sidebar.caption("No matching projects")
-        for _, row in matches.head(6).iterrows():
-            code = str(row["source_project_id"])
-            label = str(row.get("display_name") or row.get("project_name") or code)
-            if st.sidebar.button(
-                f"{label} · {code}",
-                key=f"global_project_result_{code}",
-                width="stretch",
-            ):
-                open_project(code)
+    if sidebar_project and st.sidebar.button(
+        "Open project",
+        key=f"global_project_open_{selected_portfolio}",
+        width="stretch",
+    ):
+        open_project(str(sidebar_project))
 
 st.markdown(
     '<div class="app-kicker">Commercial Banking · Real Estate</div>',

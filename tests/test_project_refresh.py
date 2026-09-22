@@ -8,11 +8,17 @@ from teduh_monitor.config import Settings
 from teduh_monitor.monitor import (
     alerts_path,
     current_metrics_path,
+    detect_project_region,
     history_csv_path,
     refresh_projects,
+    remove_tracked_project,
+)
+from teduh_monitor.portfolios import (
+    assign_portfolio_projects,
+    load_portfolio_memberships,
 )
 from teduh_monitor.schema import ALERT_FIELDS, SHORTLIST_FIELDS
-from teduh_monitor.shortlist import upsert_shortlist_project
+from teduh_monitor.shortlist import load_audit_log, load_shortlist, upsert_shortlist_project
 from teduh_monitor.sources import SourceAnomaly, SourceResult
 from teduh_monitor.storage import atomic_write_csv, read_csv
 
@@ -96,6 +102,20 @@ class FailingTeduhClient(FakeTeduhClient):
         raise SourceAnomaly("synthetic source failure")
 
 
+class SelangorTeduhClient(FakeTeduhClient):
+    def project_detail(self, project_code: str) -> SourceResult:
+        result = super().project_detail(project_code)
+        result.payload["projek"]["negeri"] = "SELANGOR"
+        return result
+
+
+class UnsupportedStateTeduhClient(FakeTeduhClient):
+    def project_detail(self, project_code: str) -> SourceResult:
+        result = super().project_detail(project_code)
+        result.payload["projek"]["negeri"] = "Perak"
+        return result
+
+
 def _tracked_project(settings: Settings, project_code: str) -> None:
     upsert_shortlist_project(
         settings,
@@ -121,7 +141,7 @@ def _stored_record(project_code: str, snapshot_date: str) -> dict[str, object]:
         "source_project_id": project_code,
         "project_name": f"Project {project_code}",
         "hims_project_reference_date": "2026-01-01",
-        "hims_eligibility_cutoff_date": "2022-01-31",
+        "hims_eligibility_cutoff_date": "2022-01-01",
         "project_status": "Lancar",
         "ccc_obtained": "No",
         "reported_total_units": 1,
@@ -140,6 +160,29 @@ def _seed_outputs(
     atomic_write_csv(current_metrics_path(settings), current, SHORTLIST_FIELDS)
     atomic_write_csv(history_csv_path(settings), history, SHORTLIST_FIELDS)
     atomic_write_csv(alerts_path(settings), [], ALERT_FIELDS)
+
+
+def test_detect_project_region_uses_teduh_state(tmp_path) -> None:
+    settings = Settings(root=tmp_path)
+
+    assert detect_project_region(
+        settings,
+        "100-1",
+        snapshot_date="2026-09-14",
+        client_factory=SelangorTeduhClient,
+    ) == "Selangor"
+
+
+def test_detect_project_region_rejects_unsupported_state(tmp_path) -> None:
+    settings = Settings(root=tmp_path)
+
+    with pytest.raises(ValueError, match="Perak.*not yet supported"):
+        detect_project_region(
+            settings,
+            "100-1",
+            snapshot_date="2026-09-14",
+            client_factory=UnsupportedStateTeduhClient,
+        )
 
 
 def test_selected_refresh_replaces_only_target_and_appends_observation(tmp_path) -> None:
@@ -246,3 +289,32 @@ def test_selected_refresh_preserves_outputs_when_teduh_fails(tmp_path) -> None:
     assert current_metrics_path(settings).read_bytes() == current_before
     assert history_csv_path(settings).read_bytes() == history_before
     assert alerts_path(settings).read_bytes() == alerts_before
+
+
+def test_remove_tracked_project_keeps_history_but_cleans_current_and_profiles(
+    tmp_path,
+) -> None:
+    settings = Settings(root=tmp_path)
+    _tracked_project(settings, "100-1")
+    _tracked_project(settings, "200-1")
+    assign_portfolio_projects(
+        settings,
+        portfolio_id="test_profile",
+        project_codes=["100-1"],
+        project_set="reporting_set",
+    )
+    first = _stored_record("100-1", "2026-09-13")
+    second = _stored_record("200-1", "2026-09-13")
+    _seed_outputs(settings, [first, second], [first, second])
+
+    remove_tracked_project(settings, "100-1", changed_by="ABC")
+
+    assert [row["source_project_id"] for row in load_shortlist(settings)] == ["200-1"]
+    assert [
+        row["source_project_id"] for row in read_csv(current_metrics_path(settings))
+    ] == ["200-1"]
+    assert {
+        row["source_project_id"] for row in read_csv(history_csv_path(settings))
+    } == {"100-1", "200-1"}
+    assert load_portfolio_memberships(settings) == []
+    assert load_audit_log(settings)[-1]["action"] == "Project removed"

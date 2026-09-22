@@ -9,6 +9,7 @@ from teduh_monitor.portfolios import (
     load_portfolios,
     portfolio_current,
     portfolio_shortlist,
+    remove_portfolio_projects,
     save_portfolio,
 )
 from teduh_monitor.storage import write_csv
@@ -91,4 +92,39 @@ def test_assign_portfolio_projects_adds_and_reclassifies_memberships(tmp_path: P
             "source_project_id": "2-1",
             "project_set": "comparator_set",
         },
+    ]
+
+
+def test_remove_portfolio_projects_only_changes_selected_profile(tmp_path: Path) -> None:
+    settings = Settings(root=tmp_path)
+    write_csv(
+        tmp_path / "config" / "portfolio_projects.csv",
+        [
+            {
+                "portfolio_id": "first",
+                "source_project_id": "1-1",
+                "project_set": "reporting_set",
+            },
+            {
+                "portfolio_id": "second",
+                "source_project_id": "1-1",
+                "project_set": "comparator_set",
+            },
+        ],
+        ["portfolio_id", "source_project_id", "project_set"],
+    )
+
+    removed = remove_portfolio_projects(
+        settings,
+        portfolio_id="first",
+        project_codes=["1-1"],
+    )
+
+    assert removed == 1
+    assert load_portfolio_memberships(settings) == [
+        {
+            "portfolio_id": "second",
+            "source_project_id": "1-1",
+            "project_set": "comparator_set",
+        }
     ]

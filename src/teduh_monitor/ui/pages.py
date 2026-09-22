@@ -9,6 +9,11 @@ import streamlit as st
 
 from ..config import DEFAULT_REGION, REGION_CONFIGS, Settings
 from ..discovery import discovery_manifest_path, load_discovery_catalog, run_discovery
+from ..portfolios import (
+    MASTER_PORTFOLIO_ID,
+    assign_portfolio_projects,
+    remove_portfolio_projects,
+)
 from ..presentation import present_alert
 from ..shortlist import PROJECT_SETS, upsert_shortlist_project
 from .components import render_project_details
@@ -20,6 +25,7 @@ from .formatting import (
     display_timestamp,
     money,
     pct,
+    project_choice_label,
     region_label,
     status_filter_label,
     whole_number,
@@ -37,6 +43,11 @@ def render_all_projects(
     current: pd.DataFrame,
     history: pd.DataFrame,
     *,
+    settings: Settings,
+    active_portfolio_id: str,
+    active_portfolio_name: str,
+    memberships: list[dict[str, str]],
+    shortlist_rows: list[dict[str, str]],
     on_view_group=None,
     on_refresh_project: Callable[[str], None] | None = None,
 ) -> None:
@@ -44,24 +55,42 @@ def render_all_projects(
     if current.empty:
         st.info("Refresh the shortlist to populate current TEDUH metrics.")
     else:
-        project_search, group_search = st.columns(2)
-        project_query = project_search.text_input(
-            "Search project name",
-            key="all_projects_name_search",
-            placeholder="Local or TEDUH registered name",
+        project_rows = {
+            str(row["source_project_id"]): row
+            for _, row in current.sort_values(
+                ["display_name", "source_project_id"], na_position="last"
+            ).iterrows()
+        }
+        group_options = sorted(
+            {
+                str(value).strip()
+                for column in ("parent_group", "developer_name")
+                for value in current[column].dropna()
+                if str(value).strip()
+            },
+            key=str.casefold,
         )
-        group_query = group_search.text_input(
-            "Search parent group or developer",
-            key="all_projects_group_search",
-            placeholder="Parent group, developer or SPV",
+        project_search, group_search = st.columns(2)
+        project_filter = project_search.selectbox(
+            "Find a project",
+            list(project_rows),
+            index=None,
+            format_func=lambda code: project_choice_label(project_rows[code]),
+            key="all_projects_project_choice",
+            placeholder="Search name, code, group or developer",
+        )
+        group_filter = group_search.selectbox(
+            "Find a group or developer",
+            group_options,
+            index=None,
+            key="all_projects_group_choice",
+            placeholder="Search parent group, developer or SPV",
         )
 
         filter_region, filter_set, filter_status = st.columns(3)
         region_filter = filter_region.selectbox(
             "Region",
-            ["All regions"] + [
-                region for region in REGION_CONFIGS if region in set(current["region"].dropna())
-            ],
+            ["All regions"] + list(REGION_CONFIGS),
             format_func=region_label,
             key="all_projects_region",
         )
@@ -86,19 +115,14 @@ def render_all_projects(
             all_view = all_view[all_view["project_set"].isin(set_filter)]
         if status_filter:
             all_view = all_view[all_view["project_status"].isin(status_filter)]
-        if project_query.strip():
-            needle = project_query.strip().casefold()
+        if project_filter:
             all_view = all_view[
-                all_view[["display_name", "project_name"]]
-                .fillna("")
-                .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
+                all_view["source_project_id"].astype(str) == str(project_filter)
             ]
-        if group_query.strip():
-            needle = group_query.strip().casefold()
+        if group_filter:
             all_view = all_view[
-                all_view[["parent_group", "developer_name"]]
-                .fillna("")
-                .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
+                all_view["parent_group"].fillna("").eq(group_filter)
+                | all_view["developer_name"].fillna("").eq(group_filter)
             ]
 
         st.caption(f"Showing {len(all_view):,} of {len(current):,} projects")
@@ -173,6 +197,96 @@ def render_all_projects(
                     on_view_group=on_view_group,
                     on_refresh_project=on_refresh_project,
                 )
+                project_code = str(selected_all["source_project_id"])
+                shortlist_by_code = {
+                    row["source_project_id"]: row for row in shortlist_rows
+                }
+                membership = next(
+                    (
+                        row
+                        for row in memberships
+                        if row["portfolio_id"] == active_portfolio_id
+                        and row["source_project_id"] == project_code
+                    ),
+                    None,
+                )
+                current_set = (
+                    shortlist_by_code[project_code]["project_set"]
+                    if active_portfolio_id == MASTER_PORTFOLIO_ID
+                    else (membership or {}).get("project_set")
+                )
+                st.markdown(f"#### {active_portfolio_name} classification")
+                classification = st.selectbox(
+                    "Project set",
+                    list(PROJECT_SETS),
+                    index=list(PROJECT_SETS).index(current_set or "general"),
+                    format_func=lambda value: SET_LABELS[value],
+                    key=f"project_profile_set_{active_portfolio_id}_{project_code}",
+                )
+                actor = ""
+                if active_portfolio_id == MASTER_PORTFOLIO_ID:
+                    actor = st.text_input(
+                        "Changed by",
+                        value=st.session_state.get("audit_actor", ""),
+                        key=f"project_master_actor_{project_code}",
+                    )
+                save_column, remove_column = st.columns(2)
+                save_label = (
+                    "Update classification"
+                    if current_set
+                    else f"Add to {active_portfolio_name}"
+                )
+                if save_column.button(
+                    save_label,
+                    type="primary",
+                    width="stretch",
+                    key=f"save_project_profile_{active_portfolio_id}_{project_code}",
+                ):
+                    if active_portfolio_id == MASTER_PORTFOLIO_ID:
+                        if not actor.strip():
+                            st.error("Enter your name or initials.")
+                        else:
+                            upsert_shortlist_project(
+                                settings,
+                                {
+                                    **shortlist_by_code[project_code],
+                                    "project_set": classification,
+                                },
+                                changed_by=actor,
+                            )
+                            st.session_state["audit_actor"] = actor.strip()
+                            st.session_state["app_notice"] = (
+                                f"Updated {selected_all['display_name']} to "
+                                f"{SET_LABELS[classification]}."
+                            )
+                            st.rerun()
+                    else:
+                        assign_portfolio_projects(
+                            settings,
+                            portfolio_id=active_portfolio_id,
+                            project_codes=[project_code],
+                            project_set=classification,
+                        )
+                        st.session_state["app_notice"] = (
+                            f"Saved {selected_all['display_name']} as "
+                            f"{SET_LABELS[classification]} in {active_portfolio_name}."
+                        )
+                        st.rerun()
+                if active_portfolio_id != MASTER_PORTFOLIO_ID and remove_column.button(
+                    f"Remove from {active_portfolio_name}",
+                    disabled=membership is None,
+                    width="stretch",
+                    key=f"remove_project_profile_{active_portfolio_id}_{project_code}",
+                ):
+                    remove_portfolio_projects(
+                        settings,
+                        portfolio_id=active_portfolio_id,
+                        project_codes=[project_code],
+                    )
+                    st.session_state["app_notice"] = (
+                        f"Removed {selected_all['display_name']} from {active_portfolio_name}."
+                    )
+                    st.rerun()
 
 
 
@@ -184,6 +298,7 @@ def render_shortlist(
     include_refresh: bool = True,
     current_snapshot_by_code: dict[str, str] | None = None,
     on_refresh_project: Callable[[str], None] | None = None,
+    on_remove_project: Callable[[str, str], None] | None = None,
 ) -> None:
     st.subheader("Tracked projects")
 
@@ -194,10 +309,19 @@ def render_shortlist(
         shortlist_frame["registry_name"] = shortlist_frame["source_project_id"].map(
             registry_name_by_code
         )
-        shortlist_search = st.text_input(
-            "Search tracked projects",
-            placeholder="Project, TEDUH code or parent group",
-            key="shortlist_search",
+        shortlist_options = {
+            str(row["source_project_id"]): row
+            for _, row in shortlist_frame.sort_values(
+                ["display_name", "source_project_id"], na_position="last"
+            ).iterrows()
+        }
+        shortlist_choice = st.selectbox(
+            "Find a tracked project",
+            list(shortlist_options),
+            index=None,
+            format_func=lambda code: project_choice_label(shortlist_options[code]),
+            placeholder="Search project, TEDUH code or parent group",
+            key="shortlist_project_choice",
         )
         watch_regions = ["All regions"] + list(REGION_CONFIGS)
         watch_region = st.radio(
@@ -209,20 +333,10 @@ def render_shortlist(
         )
         if watch_region != "All regions":
             shortlist_frame = shortlist_frame[shortlist_frame["region"] == watch_region]
-        if shortlist_search.strip():
-            needle = shortlist_search.strip().casefold()
+        if shortlist_choice:
             shortlist_frame = shortlist_frame[
-                shortlist_frame[
-                    [
-                        "source_project_id",
-                        "display_name",
-                        "registry_name",
-                        "parent_group",
-                        "tracking_notes",
-                    ]
-                ]
-                .fillna("")
-                .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
+                shortlist_frame["source_project_id"].astype(str)
+                == str(shortlist_choice)
             ]
         shortlist_frame["project_set"] = shortlist_frame["project_set"].map(SET_LABELS).fillna(shortlist_frame["project_set"])
         shortlist_frame["region_display"] = shortlist_frame["region"].map(region_label)
@@ -256,9 +370,10 @@ def render_shortlist(
             refresh_code = st.selectbox(
                 "Tracked project",
                 list(refresh_options),
-                format_func=lambda project_code: (
-                    f"{refresh_options[project_code]['display_name']} · {project_code}"
+                format_func=lambda project_code: project_choice_label(
+                    refresh_options[project_code]
                 ),
+                placeholder="Search project, TEDUH code or parent group",
                 key="single_project_refresh_code",
             )
             last_snapshot = (current_snapshot_by_code or {}).get(refresh_code, "")
@@ -277,6 +392,34 @@ def render_shortlist(
                 if refreshed_today
                 else f"Last observation: {display_date(last_snapshot)}"
             )
+        if on_remove_project is not None:
+            st.markdown("#### Remove a tracked project")
+            remove_options = shortlist_frame.set_index("source_project_id").to_dict("index")
+            with st.form("remove_tracked_project_form"):
+                remove_code = st.selectbox(
+                    "Project to remove",
+                    list(remove_options),
+                    format_func=lambda project_code: project_choice_label(
+                        remove_options[project_code]
+                    ),
+                    placeholder="Search project, TEDUH code or parent group",
+                )
+                removed_by = st.text_input(
+                    "Removed by",
+                    value=st.session_state.get("audit_actor", ""),
+                )
+                confirm_remove = st.checkbox(
+                    "Remove this project from the tracked library and all profiles"
+                )
+                remove_submitted = st.form_submit_button("Remove project")
+            if remove_submitted:
+                if not removed_by.strip():
+                    st.error("Enter your name or initials.")
+                elif not confirm_remove:
+                    st.error("Confirm that this project should be removed.")
+                else:
+                    on_remove_project(remove_code, removed_by.strip())
+                    st.rerun()
     if include_refresh:
         render_refresh_and_data_quality(settings)
 
@@ -288,18 +431,33 @@ def render_add_or_edit(
     registry_name_by_code: dict[str, str],
     *,
     on_project_added: Callable[[str], None] | None = None,
+    resolve_project_region: Callable[[str], str] | None = None,
 ) -> None:
     st.subheader("Add or edit a tracked project")
     mode = st.radio("Action", ["Add new", "Edit existing"], horizontal=True)
     existing_by_code = {row["source_project_id"]: row for row in shortlist_rows}
+    known_groups = sorted(
+        {
+            str(row.get("parent_group") or "").strip()
+            for row in shortlist_rows
+            if str(row.get("parent_group") or "").strip()
+        },
+        key=str.casefold,
+    )
     selected_existing: dict[str, str] | None = None
     if mode == "Edit existing" and existing_by_code:
+        existing_choices = {
+            code: {
+                **row,
+                "registry_name": registry_name_by_code.get(code, ""),
+            }
+            for code, row in existing_by_code.items()
+        }
         chosen = st.selectbox(
             "Project",
-            list(existing_by_code),
-            format_func=lambda code: (
-                f"{existing_by_code[code]['display_name'] or registry_name_by_code.get(code) or 'TEDUH project'} · {code}"
-            ),
+            list(existing_choices),
+            format_func=lambda code: project_choice_label(existing_choices[code]),
+            placeholder="Search project, TEDUH code or parent group",
         )
         selected_existing = existing_by_code[chosen]
     default = selected_existing or {}
@@ -312,13 +470,32 @@ def render_add_or_edit(
             placeholder="Leave blank to use TEDUH's registered name",
             help="Only enter this when your team uses a clearer or more familiar project name.",
         )
-        parent_group = second.text_input("Parent group", value=default.get("parent_group", ""))
+        default_group = str(default.get("parent_group") or "").strip()
+        if default_group and default_group not in known_groups:
+            known_groups.append(default_group)
+            known_groups.sort(key=str.casefold)
+        parent_group = second.selectbox(
+            "Parent group",
+            known_groups,
+            index=(known_groups.index(default_group) if default_group else None),
+            placeholder="Search or enter a parent group",
+            accept_new_options=True,
+            key=(
+                f"project_parent_group_{selected_existing['source_project_id']}"
+                if selected_existing
+                else "project_parent_group_new"
+            ),
+        )
+        parent_group = str(parent_group or "").strip()
         third, fourth = st.columns(2)
-        region = third.selectbox(
-            "Region",
-            list(REGION_CONFIGS),
-            index=list(REGION_CONFIGS).index(default.get("region", DEFAULT_REGION)),
-            format_func=region_label,
+        third.text_input(
+            "Region · TEDUH",
+            value=(
+                region_label(default["region"])
+                if default.get("region")
+                else "Detected when saved"
+            ),
+            disabled=True,
         )
         project_set = fourth.selectbox(
             "Project set",
@@ -363,6 +540,15 @@ def render_add_or_edit(
             try:
                 normalized_code = code.strip()
                 is_new_project = normalized_code not in existing_by_code
+                should_detect_region = (
+                    is_new_project or normalized_code not in registry_name_by_code
+                )
+                if should_detect_region:
+                    if resolve_project_region is None:
+                        raise ValueError("Automatic TEDUH region detection is unavailable")
+                    region = resolve_project_region(normalized_code)
+                else:
+                    region = default.get("region", DEFAULT_REGION)
                 upsert_shortlist_project(
                     settings,
                     {
@@ -384,7 +570,9 @@ def render_add_or_edit(
                     changed_by=changed_by,
                 )
                 st.session_state["audit_actor"] = changed_by.strip()
-                st.session_state["app_notice"] = f"Saved TEDUH project {normalized_code}."
+                st.session_state["app_notice"] = (
+                    f"Saved TEDUH project {normalized_code} · {region_label(region)}."
+                )
                 if is_new_project and active and on_project_added is not None:
                     on_project_added(normalized_code)
                 st.rerun()
@@ -428,16 +616,26 @@ def render_discovery(
         discovery = pd.DataFrame(discovery_rows)
         tracked_codes = {row["source_project_id"] for row in shortlist_rows}
         discovery["currently_tracked"] = discovery["source_project_id"].isin(tracked_codes).map({True: "Yes", False: "No"})
-        search = st.text_input("Search project, developer or TEDUH code", key="discovery_search")
+        discovery_choices = {
+            str(row["source_project_id"]): row
+            for _, row in discovery.sort_values(
+                ["registry_name", "source_project_id"], na_position="last"
+            ).iterrows()
+        }
+        discovery_filter = st.selectbox(
+            "Find a project",
+            list(discovery_choices),
+            index=None,
+            format_func=lambda code: project_choice_label(discovery_choices[code]),
+            placeholder="Search project, developer or TEDUH code",
+            key="discovery_project_choice",
+        )
         status_values = sorted(value for value in discovery["project_status"].dropna().unique() if value)
         statuses = st.multiselect("Status", status_values)
         filtered = discovery
-        if search:
-            needle = search.casefold()
+        if discovery_filter:
             filtered = filtered[
-                filtered[["source_project_id", "registry_name", "developer_name"]]
-                .fillna("")
-                .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
+                filtered["source_project_id"].astype(str) == str(discovery_filter)
             ]
         if statuses:
             filtered = filtered[filtered["project_status"].isin(statuses)]
@@ -461,10 +659,25 @@ def render_discovery(
                 discovered_code = st.selectbox(
                     "Project",
                     list(choices),
-                    format_func=lambda value: f"{choices[value]['registry_name']} · {value}",
+                    format_func=lambda value: project_choice_label(choices[value]),
+                    placeholder="Search project, developer or TEDUH code",
                 )
                 discovered_name = st.text_input("Actual/display name (optional)")
-                discovered_parent = st.text_input("Parent group (optional)")
+                discovery_groups = sorted(
+                    {
+                        str(row.get("parent_group") or "").strip()
+                        for row in shortlist_rows
+                        if str(row.get("parent_group") or "").strip()
+                    },
+                    key=str.casefold,
+                )
+                discovered_parent = st.selectbox(
+                    "Parent group (optional)",
+                    discovery_groups,
+                    index=None,
+                    placeholder="Search or enter a parent group",
+                    accept_new_options=True,
+                )
                 discovered_set = st.selectbox(
                     "Project set",
                     list(PROJECT_SETS),
@@ -487,7 +700,7 @@ def render_discovery(
                             "source_project_id": discovered_code,
                             "region": discovery_region,
                             "display_name": discovered_name or choices[discovered_code]["registry_name"],
-                            "parent_group": discovered_parent,
+                            "parent_group": str(discovered_parent or "").strip(),
                             "project_set": discovered_set,
                             "tracking_notes": "",
                             "active": "Yes",

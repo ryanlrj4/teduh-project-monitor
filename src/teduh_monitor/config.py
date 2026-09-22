@@ -20,6 +20,21 @@ REGION_CONFIGS = {
         "state_label": "Pulau Pinang",
         "slug": "penang",
     },
+    "Selangor": {
+        "state_id": "10",
+        "state_label": "Selangor",
+        "slug": "selangor",
+    },
+    "Johor": {
+        "state_id": "01",
+        "state_label": "Johor",
+        "slug": "johor",
+    },
+    "Malacca": {
+        "state_id": "04",
+        "state_label": "Melaka",
+        "slug": "melaka",
+    },
 }
 TARGET_STATUSES = {
     "0": "Belum Mula",
@@ -29,9 +44,9 @@ TARGET_STATUSES = {
     "5": "Siap Dengan CCC",
     "7": "Siap Dengan CFO",
 }
-HIMS_UNIT_DATA_START_DATE = date(2022, 1, 31)
+HIMS_UNIT_DATA_START_DATE = date(2022, 1, 1)
 HIMS_UNIT_DATA_START_ISO = HIMS_UNIT_DATA_START_DATE.isoformat()
-TRANSFORMATION_VERSION = "1.5.1"
+TRANSFORMATION_VERSION = "1.5.2"
 USER_AGENT = "TeduhProjectMonitor/0.2 (local research; sequential public requests)"
 
 

@@ -8,6 +8,8 @@ from typing import Any, Callable
 
 from .collection import collect_project
 from .config import REGION_CONFIGS, Settings
+from .normalize import normalize_state
+from .portfolios import remove_project_from_all_portfolios
 from .refresh_status import (
     complete_refresh_failure,
     complete_refresh_success,
@@ -16,7 +18,7 @@ from .refresh_status import (
 )
 from .sources import SourceAnomaly, TeduhClient
 from .validate import require_no_errors, validate_records
-from .shortlist import load_shortlist
+from .shortlist import load_shortlist, remove_shortlist_project
 from .schema import ALERT_FIELDS, SHORTLIST_FIELD_SPECS, SHORTLIST_FIELDS
 from .storage import atomic_write_csv, atomic_write_parquet, read_csv
 
@@ -44,6 +46,32 @@ def history_parquet_path(settings: Settings) -> Path:
 
 def alerts_path(settings: Settings) -> Path:
     return settings.processed_dir / "shortlist_alerts.csv"
+
+
+def detect_project_region(
+    settings: Settings,
+    project_code: str,
+    *,
+    snapshot_date: str | None = None,
+    client_factory: ClientFactory = TeduhClient,
+) -> str:
+    """Resolve a configured region from the state returned by TEDUH."""
+    code = str(project_code).strip()
+    if not code:
+        raise ValueError("Enter a TEDUH project code")
+    today = snapshot_date or date.today().isoformat()
+    with client_factory(settings, snapshot_date=today, force=False) as client:
+        detail = client.project_detail(code).payload
+    project = detail.get("projek") or {}
+    observed_state = normalize_state(project.get("negeri"))
+    for region, config in REGION_CONFIGS.items():
+        if observed_state == normalize_state(config["state_label"]):
+            return region
+    if not observed_state:
+        raise ValueError(f"TEDUH did not return a state for project {code}")
+    raise ValueError(
+        f"TEDUH registers project {code} in {observed_state}, which is not yet supported"
+    )
 
 
 def project_scale(gdv: Any, confidence: str | None) -> tuple[str, str, str]:
@@ -210,10 +238,16 @@ def _days_until(snapshot_date: Any, future_date: Any) -> int | None:
         return None
 
 
-def build_alerts(history: list[dict[str, Any]]) -> list[dict[str, str]]:
+def build_alerts(
+    history: list[dict[str, Any]],
+    *,
+    current_project_codes: set[str] | None = None,
+) -> list[dict[str, str]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in history:
-        grouped[str(row.get("source_project_id") or "")].append(row)
+        project_code = str(row.get("source_project_id") or "")
+        if current_project_codes is None or project_code in current_project_codes:
+            grouped[project_code].append(row)
     alerts: list[dict[str, str]] = []
 
     def add(row: dict[str, Any], severity: str, code: str, message: str) -> None:
@@ -317,7 +351,10 @@ def _snapshot_shortlist(
     )
     _publish_current(settings, records)
     history = _merge_history(settings, records)
-    alerts = build_alerts(history)
+    alerts = build_alerts(
+        history,
+        current_project_codes={str(row["source_project_id"]) for row in records},
+    )
     atomic_write_csv(alerts_path(settings), alerts, ALERT_FIELDS)
     progress("Shortlist snapshot, history, and alerts were validated and published.")
     return {
@@ -414,7 +451,10 @@ def refresh_projects(
     merged_current.extend(refreshed)
     _publish_current(settings, merged_current)
     history = _merge_history(settings, refreshed)
-    alerts = build_alerts(history)
+    alerts = build_alerts(
+        history,
+        current_project_codes={str(row["source_project_id"]) for row in merged_current},
+    )
     atomic_write_csv(alerts_path(settings), alerts, ALERT_FIELDS)
     progress("Selected project data was validated and published.")
     return {
@@ -429,6 +469,47 @@ def refresh_projects(
         "live_project_count": live_count,
         "alert_count": len(alerts),
     }
+
+
+def remove_project_from_current(settings: Settings, project_code: str) -> bool:
+    """Remove one project from current outputs while retaining dated history."""
+    code = str(project_code).strip()
+    current = read_csv(current_metrics_path(settings))
+    retained = [
+        row
+        for row in current
+        if str(row.get("source_project_id") or "") != code
+    ]
+    removed = len(retained) != len(current)
+    if removed:
+        _publish_current(settings, retained)
+    history = read_csv(history_csv_path(settings))
+    current_codes = {
+        str(row.get("source_project_id") or "") for row in retained
+    }
+    alerts = build_alerts(history, current_project_codes=current_codes)
+    atomic_write_csv(alerts_path(settings), alerts, ALERT_FIELDS)
+    return removed
+
+
+def remove_tracked_project(
+    settings: Settings,
+    project_code: str,
+    *,
+    changed_by: str,
+) -> dict[str, str]:
+    code = str(project_code).strip()
+    if code not in {
+        row["source_project_id"] for row in load_shortlist(settings)
+    }:
+        raise ValueError(f"Project is not tracked: {code}")
+    remove_project_from_current(settings, code)
+    remove_project_from_all_portfolios(settings, code)
+    return remove_shortlist_project(
+        settings,
+        code,
+        changed_by=changed_by,
+    )
 
 
 def snapshot_shortlist(

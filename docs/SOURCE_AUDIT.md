@@ -34,13 +34,13 @@ Accordingly:
 
 ## HIMS unit-data eligibility cutoff
 
-TEDUH states that its unit information is based on developer updates in HIMS beginning on 31 January 2022. Projects predating that boundary can remain visible in today's status snapshot while lacking a complete and comparable HIMS unit history.
+TEDUH states on its public unit pages that its unit information is based on developer updates in HIMS beginning on 1 January 2022. Projects predating that boundary can remain visible in today's status snapshot while lacking a complete and comparable HIMS unit history.
 
 The processed dataset therefore excludes legacy projects using this deterministic rule:
 
 1. Use `pjb.tarikhPjbPertama` (the first PJB/SPA date) when it is available.
 2. Otherwise use `projek.permitMula` as the fallback, which retains new/not-started projects that do not yet have a first SPA.
-3. Include the project only when that reference date is on or after `2022-01-31`.
+3. Include the project only when that reference date is on or after `2022-01-01`.
 4. Exclude a project when neither date is available.
 
 The first SPA date takes precedence over the permit date so that an old project is not made eligible merely because its advertising permit was renewed after 2022.

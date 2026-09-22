@@ -84,6 +84,28 @@ def region_label(value: object) -> str:
     return REGION_LABELS.get(text, text)
 
 
+def project_choice_label(row: object) -> str:
+    getter = getattr(row, "get")
+    code = str(getter("source_project_id") or getter("id") or "").strip()
+    name = str(
+        getter("display_name")
+        or getter("project_name")
+        or getter("registry_name")
+        or code
+        or "TEDUH project"
+    ).strip()
+    parts = [name]
+    if code and code.casefold() != name.casefold():
+        parts.append(code)
+    for group in (
+        str(getter("parent_group") or "").strip(),
+        str(getter("developer_name") or "").strip(),
+    ):
+        if group and all(group.casefold() != part.casefold() for part in parts):
+            parts.append(group)
+    return " · ".join(parts)
+
+
 def signed_number(
     value: object,
     *,

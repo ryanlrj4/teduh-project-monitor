@@ -4,6 +4,7 @@ from teduh_monitor.ui.formatting import (
     json_rows,
     money,
     numeric_range,
+    project_choice_label,
     signed_number,
 )
 
@@ -30,3 +31,17 @@ def test_display_date_supports_api_and_teduh_display_formats() -> None:
     assert display_date("2026-08-25") == "25 Aug 2026"
     assert display_date("25/08/2026") == "25 Aug 2026"
     assert display_date("not-a-date") == "N/A"
+
+
+def test_project_choice_label_is_searchable_by_name_code_and_group() -> None:
+    assert project_choice_label(
+        {
+            "source_project_id": "100-1",
+            "display_name": "Local Project",
+            "project_name": "Registered Project",
+            "parent_group": "Example Group",
+            "developer_name": "EXAMPLE PROJECT SDN. BHD.",
+        }
+    ) == (
+        "Local Project · 100-1 · Example Group · EXAMPLE PROJECT SDN. BHD."
+    )

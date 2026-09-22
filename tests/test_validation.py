@@ -56,6 +56,6 @@ def test_validation_detects_duplicate_projects_and_bad_percentage() -> None:
 
 def test_validation_rejects_legacy_project() -> None:
     legacy = record("OLD-1", "Lancar", 10, 100)
-    legacy["hims_project_reference_date"] = "2022-01-30"
+    legacy["hims_project_reference_date"] = "2021-12-31"
     issues = validate_records([legacy])
     assert "legacy_project_in_output" in {issue["code"] for issue in issues}

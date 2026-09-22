@@ -13,7 +13,12 @@ from teduh_monitor.discovery import (
     discovery_manifest_path,
     run_discovery,
 )
-from teduh_monitor.shortlist import load_audit_log, load_shortlist, upsert_shortlist_project
+from teduh_monitor.shortlist import (
+    load_audit_log,
+    load_shortlist,
+    remove_shortlist_project,
+    upsert_shortlist_project,
+)
 
 
 def test_shortlist_preserves_manual_name_and_parent_mapping(tmp_path) -> None:
@@ -180,6 +185,31 @@ def test_saving_without_changes_does_not_add_audit_noise(tmp_path) -> None:
     upsert_shortlist_project(settings, row, changed_by="RLR")
     audit = load_audit_log(settings)
     assert [event["action"] for event in audit] == ["Project added"]
+
+
+def test_project_removal_is_audited_and_preserves_other_projects(tmp_path) -> None:
+    settings = Settings(root=tmp_path)
+    upsert_shortlist_project(
+        settings,
+        {"source_project_id": "100-1", "display_name": "Remove Me"},
+        changed_by="RLR",
+    )
+    upsert_shortlist_project(
+        settings,
+        {"source_project_id": "200-1", "display_name": "Keep Me"},
+        changed_by="RLR",
+    )
+
+    removed = remove_shortlist_project(
+        settings,
+        "100-1",
+        changed_by="ABC",
+    )
+
+    assert removed["display_name"] == "Remove Me"
+    assert [row["source_project_id"] for row in load_shortlist(settings)] == ["200-1"]
+    assert load_audit_log(settings)[-1]["action"] == "Project removed"
+    assert load_audit_log(settings)[-1]["changed_by"] == "ABC"
 
 
 def test_same_day_discovery_reuses_catalog_without_live_request(tmp_path) -> None:

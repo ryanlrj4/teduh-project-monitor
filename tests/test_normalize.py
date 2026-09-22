@@ -4,6 +4,7 @@ from teduh_monitor.normalize import (
     hims_project_reference,
     is_hims_eligible,
     normalize_sales_status,
+    normalize_state,
     parse_date,
     parse_price,
     safe_percentage,
@@ -32,6 +33,14 @@ def test_sales_status_normalization() -> None:
     assert normalize_sales_status(None, "available") == "unsold"
 
 
+def test_state_normalization_uses_teduh_canonical_labels() -> None:
+    assert normalize_state("WP KUALA LUMPUR") == "Wp Kuala Lumpur"
+    assert normalize_state("PULAU PINANG") == "Pulau Pinang"
+    assert normalize_state("SELANGOR") == "Selangor"
+    assert normalize_state("JOHOR") == "Johor"
+    assert normalize_state("MELAKA") == "Melaka"
+
+
 def test_safe_percentage() -> None:
     assert safe_percentage(1, 4) == 25.0
     assert safe_percentage(1, 0) is None
@@ -46,7 +55,11 @@ def test_hims_reference_prefers_first_spa_over_renewed_permit() -> None:
 
 
 def test_hims_reference_falls_back_to_permit_for_project_without_spa() -> None:
-    reference, basis = hims_project_reference("-", "2022-01-31")
-    assert reference == "2022-01-31"
+    reference, basis = hims_project_reference("-", "2022-01-01")
+    assert reference == "2022-01-01"
     assert basis == "permit_start_date_fallback"
-    assert is_hims_eligible("-", "2022-01-31")
+    assert is_hims_eligible("-", "2022-01-01")
+
+
+def test_january_2022_first_spa_is_hims_eligible() -> None:
+    assert is_hims_eligible("14 Jan 2022", "2025-12-28")

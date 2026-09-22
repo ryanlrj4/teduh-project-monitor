@@ -13,7 +13,7 @@ The dashboard opens locally in your browser. Its sidebar is organised around the
 - **My Portfolio** — attention items, recent movements and the active profile's Reporting Set.
 - **Groups** — search and roll up developments mapped to the same parent group or registered developer.
 - **Compare** — find nearby candidates, add them to a comparison or Comparator Set, and compare up to six projects.
-- **Projects** — search and filter the full tracked-project library.
+- **Projects** — search the full tracked-project library, open details, and add, reclassify or remove a project in the active profile.
 - **Alerts** — review business-facing status, permit, developer, commercial-progress and data-quality exceptions.
 - **Manage** — maintain profiles, tracked projects, Discovery, refresh/data quality and the audit log.
 
@@ -23,8 +23,8 @@ The dashboard supports both full and targeted refreshes. A newly added active pr
 
 ## What is tracked
 
-- Regions: `Kuala Lumpur` (`state=14`) and `Penang` (`state=07`)
-- HIMS eligibility cutoff: `2022-01-31`
+- Regions: `Kuala Lumpur` (`state=14`), `Penang` (`state=07`), `Selangor` (`state=10`), `Johor` (`state=01`), and `Malacca` / TEDUH `Melaka` (`state=04`)
+- HIMS eligibility cutoff: `2022-01-01`
 - Active statuses: `Belum Mula`, `Lancar`, `Sakit`, `Lewat`
 - Completed statuses: `Siap Dengan CCC`, `Siap Dengan CFO`
 - Normal refresh: active projects in `config/shortlist.csv` only
@@ -36,7 +36,7 @@ CCC/CFO obtained remains a Yes/No field. `Yes` is supported by a completed-with-
 
 Project details distinguish TEDUH facts, locally maintained fields, application-generated timestamps, and deterministic calculations. The first view prioritises unit and value sales, construction, typical listed unit pricing, recorded SPA pricing, latest movement and weekly trends. Additional sections show remaining inventory by type/quota, recorded price realisation, contractual VP changes, component construction, permit/developer licensing, and sales calculated separately for each TEDUH unit group. Neutral component labels are used when TEDUH does not provide a block name. Actual VP remains available in the contractual detail but is not a headline measure unless an exception requires attention.
 
-Typical unit price uses the median valid TEDUH listed price, with the middle 50% shown as the typical range. High- and low-priced units remain in total listed GDV; they are not silently removed. Price-distribution and recorded-SPA unit metrics require a refresh created with transformation version 1.5.1.
+Typical unit price uses the median valid TEDUH listed price, with the middle 50% shown as the typical range. High- and low-priced units remain in total listed GDV; they are not silently removed. Price-distribution and recorded-SPA unit metrics require a refresh created with transformation version 1.5.1 or later.
 
 ## First-time installation
 

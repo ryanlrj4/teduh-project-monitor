@@ -215,3 +215,42 @@ def assign_portfolio_projects(
     atomic_write_csv(
         portfolio_memberships_path(settings), updated, list(MEMBERSHIP_FIELDS)
     )
+
+
+def remove_portfolio_projects(
+    settings: Settings,
+    *,
+    portfolio_id: str,
+    project_codes: list[str],
+) -> int:
+    if portfolio_id == MASTER_PORTFOLIO_ID:
+        raise ValueError("Remove master projects from the tracked-project register")
+    codes = {str(code).strip() for code in project_codes if str(code).strip()}
+    memberships = load_portfolio_memberships(settings)
+    retained = [
+        row
+        for row in memberships
+        if not (
+            row["portfolio_id"] == portfolio_id
+            and row["source_project_id"] in codes
+        )
+    ]
+    atomic_write_csv(
+        portfolio_memberships_path(settings), retained, list(MEMBERSHIP_FIELDS)
+    )
+    return len(memberships) - len(retained)
+
+
+def remove_project_from_all_portfolios(
+    settings: Settings,
+    project_code: str,
+) -> int:
+    code = str(project_code).strip()
+    memberships = load_portfolio_memberships(settings)
+    retained = [
+        row for row in memberships if row["source_project_id"] != code
+    ]
+    atomic_write_csv(
+        portfolio_memberships_path(settings), retained, list(MEMBERSHIP_FIELDS)
+    )
+    return len(memberships) - len(retained)

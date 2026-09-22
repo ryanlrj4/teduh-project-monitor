@@ -13,9 +13,12 @@ def test_project_scale_keeps_unknown_projects_for_review() -> None:
     assert project_scale(Decimal("1000000000"), "high")[0] == "RM1bn+"
 
 
-def test_region_state_mapping_covers_kl_and_penang() -> None:
+def test_region_state_mapping_covers_pilot_regions() -> None:
     assert REGION_CONFIGS["Kuala Lumpur"]["state_label"] == "Wp Kuala Lumpur"
     assert REGION_CONFIGS["Penang"]["state_label"] == "Pulau Pinang"
+    assert REGION_CONFIGS["Selangor"]["state_id"] == "10"
+    assert REGION_CONFIGS["Johor"]["state_id"] == "01"
+    assert REGION_CONFIGS["Malacca"]["state_label"] == "Melaka"
 
 
 def test_alerts_flag_risk_and_negative_changes() -> None:

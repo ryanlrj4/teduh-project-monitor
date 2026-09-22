@@ -125,7 +125,7 @@ def test_collect_project_rejects_region_mismatch_before_units_request() -> None:
 
 
 def test_collect_project_rejects_legacy_project_before_units_request() -> None:
-    client = FakeClient(detail_payload(first_spa="2022-01-01"))
+    client = FakeClient(detail_payload(first_spa="2021-12-31"))
 
     with pytest.raises(IneligibleProject, match="predates comparable HIMS coverage"):
         collect_project(
@@ -136,6 +136,21 @@ def test_collect_project_rejects_legacy_project_before_units_request() -> None:
         )
 
     assert client.unit_calls == 0
+
+
+def test_collect_project_accepts_january_2022_hims_project() -> None:
+    client = FakeClient(detail_payload(first_spa="14 Jan 2022"))
+
+    collected = collect_project(
+        client,
+        project_code="999-1",
+        snapshot_date="2026-08-24",
+        source_dataset_as_of="2026-08-23",
+    )
+
+    assert collected.record["hims_project_reference_date"] == "2022-01-14"
+    assert collected.record["hims_eligibility_cutoff_date"] == "2022-01-01"
+    assert client.unit_calls == 1
 
 
 def test_missing_units_policy_remains_strict_or_tolerant_by_workflow() -> None:

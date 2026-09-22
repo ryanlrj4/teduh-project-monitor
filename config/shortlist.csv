@@ -1,7 +1,8 @@
 ﻿source_project_id,region,display_name,parent_group,project_set,manual_launch_date,manual_built_up_min_sqft,manual_built_up_max_sqft,manual_psf_min,manual_psf_max,tracking_notes,active,date_added,origin
+20209-1,Kuala Lumpur,,TS Law,general,,,,,,,Yes,2026-09-14,manual
 31112-1,Kuala Lumpur,Alderwood Residence,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 30632-1,Kuala Lumpur,Aricia Residence,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
-30256-2,Kuala Lumpur,Armani Hallson KLCC,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
+30256-2,Kuala Lumpur,Armani Hallson KLCC,Armani Group,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 30280-1,Kuala Lumpur,Arte Solaris,ASIA LINK-UP SDN BHD,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 30777-1,Kuala Lumpur,Asa Residence,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 30980-1,Kuala Lumpur,Astoria Ceylon Hill,LAND PACIFIC DEVELOPMENT SDN BHD,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
@@ -20,13 +21,13 @@
 30789-1,Kuala Lumpur,Kyliez Suites @ Kl City Centre,Exsim,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 31251-1,Kuala Lumpur,M Aria,Mah Sing,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 30834-1,Kuala Lumpur,M Azura,Mah Sing,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
-30135-2,Kuala Lumpur,Menara Armani Prestij,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
+30135-2,Kuala Lumpur,Menara Armani Prestij,Armani Group,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 11611-2,Kuala Lumpur,Miranda Hills,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 5660-14,Kuala Lumpur,Oaka Residence,Berjaya,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 30947-1,Kuala Lumpur,One Seputeh Residence,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 30400-1,Kuala Lumpur,Papyrus Residence,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 30667-1,Kuala Lumpur,Park Green Bukit Jalil,MALTON BERHAD,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
-30633-1,Kuala Lumpur,Pavillion Square,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
+30633-1,Kuala Lumpur,Pavillion Square,Armani Group,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 31158-1,Kuala Lumpur,Peel Lane,ORANDO HOLDINGS SDN BHD,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 31008-1,Kuala Lumpur,Platinum Melati Residence,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 19779-3,Kuala Lumpur,Ren Residence Bukit Jalil,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
@@ -44,8 +45,13 @@
 30769-1,Kuala Lumpur,Tuan Heritage 3,CPILAND SDN BHD,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 30513-1,Kuala Lumpur,Tuju Residence,Eccaz Sdn Bhd,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
 30648-1,Kuala Lumpur,Vila Setara,,comparator_set,,,,,,,Yes,2026-08-16,authorized_chgp_public_shortlist
+19262-4,Penang,,,general,,,,,,,Yes,2026-09-15,manual
+19537-4,Penang,,Ideal Group,general,,,,,,,Yes,2026-09-14,manual
+20091-2,Penang,,Ideal Group,general,,,,,,,Yes,2026-09-15,manual
 30555-1,Penang,Eden at Botanica CT,MTT Group,reporting_set,,,,,,,Yes,2026-08-16,user_reporting_set
 31061-1,Penang,Pinnacle Bukit Gambier,Pinnacle Homes,reporting_set,,1080,1726,,,,Yes,2026-08-16,user_reporting_set
 14300-2,Penang,The Alton,Airmas Group,reporting_set,,,,,,,Yes,2026-08-16,user_reporting_set
 30439-1,Penang,The Anton,Tamarins Land,reporting_set,,,,,,,Yes,2026-08-16,user_reporting_set
 30744-1,Penang,The Crown,Chin Hin,general,2024-07-14,614,1625,,,,Yes,2026-08-16,manual
+12382-1,Selangor,,Mitraland Group,general,,,,,,,No,2026-09-14,manual
+30572-1,Selangor,,Pinnacle Homes,general,,,,,,,Yes,2026-09-14,manual

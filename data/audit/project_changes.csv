@@ -1,2 +1,14 @@
 ﻿event_timestamp,changed_by,action,source_project_id,project_name,field,previous_value,new_value,origin
 2026-08-19T16:08:29+08:00,RL,Project edited,14510-2,SWNK,Project set,general,reporting_set,manual
+2026-09-14T00:08:57+08:00,RL,Project added,30572-1,30572-1,,,,manual
+2026-09-14T00:11:41+08:00,RL,Project added,14604-1,14604-1,,,,manual
+2026-09-14T00:13:00+08:00,RL,Project edited,30256-2,Armani Hallson KLCC,Parent group,,Armani Group,authorized_chgp_public_shortlist
+2026-09-14T00:13:24+08:00,RL,Project edited,30135-2,Menara Armani Prestij,Parent group,,Armani Group,authorized_chgp_public_shortlist
+2026-09-14T00:14:09+08:00,RL,Project edited,30633-1,Pavillion Square,Parent group,,Armani Group,authorized_chgp_public_shortlist
+2026-09-14T08:17:54+08:00,RL,Project edited,30572-1,30572-1,Region,Kuala Lumpur,Selangor,manual
+2026-09-14T08:38:19+08:00,RL,Project removed,14604-1,14604-1,,,,manual
+2026-09-14T10:23:19+08:00,RL,Project added,19537-4,19537-4,,,,manual
+2026-09-14T10:24:13+08:00,RL,Project added,12382-1,12382-1,,,,manual
+2026-09-14T11:03:09+08:00,RL,Project added,20209-1,20209-1,,,,manual
+2026-09-15T10:58:44+08:00,RL,Project added,20091-2,20091-2,,,,manual
+2026-09-15T11:07:22+08:00,RL,Project added,19262-4,19262-4,,,,manual

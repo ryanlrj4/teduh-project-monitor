@@ -8,7 +8,7 @@ These fields are entered locally and are not claimed to come from TEDUH.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `region` | text | Controlled dashboard region; currently `Kuala Lumpur` or `Penang` |
+| `region` | text | Controlled dashboard region: `Kuala Lumpur`, `Penang`, `Selangor`, `Johor`, or `Malacca` (TEDUH state label `Melaka`) |
 | `display_name` | text | Actual or preferred project name shown in the dashboard |
 | `parent_group` | text | Public parent-group mapping maintained by the user |
 | `project_set` | text | `reporting_set`, `comparator_set`, or `general` |
@@ -48,7 +48,7 @@ These fields are entered locally and are not claimed to come from TEDUH.
 | `status.rows[].hargaMin`, `status.rows[].hargaMax` | `teduh_spa_price_min`, `teduh_spa_price_max` | project detail | decimal RM | Minimum and maximum prices displayed in TEDUH's component-status table | Withheld if either side is unavailable | `805200.00`, `2482800.00` |
 | First SPA, else permit start | `hims_project_reference_date` | derived | date | Project-age proxy used for HIMS eligibility | Project is excluded if no reference date exists | `2026-05-10` |
 | Reference-date selection | `hims_project_reference_date_basis` | derived | text | `first_spa_date` or `permit_start_date_fallback` | Required in published rows | `first_spa_date` |
-| Fixed source boundary | `hims_eligibility_cutoff_date` | configuration | date | Earliest eligible reference date | Always `2022-01-31` | `2022-01-31` |
+| Fixed source boundary | `hims_eligibility_cutoff_date` | configuration | date | Earliest eligible reference date | Always `2022-01-01` | `2022-01-01` |
 
 ## PJB and construction
 

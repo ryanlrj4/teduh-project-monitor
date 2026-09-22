@@ -36,6 +36,21 @@ SET_LABELS = {
     "comparator_set": "Comparator Set",
     "general": "General",
 }
+COMPARATOR_COLUMNS = [
+    "Project",
+    "Group / developer",
+    "Distance",
+    "Units",
+    "Potential GDV",
+    "Average unit price",
+    "Typical price range",
+    "Set",
+    "Unit sales",
+    "Value sold",
+    "Construction",
+    "Status",
+    "First SPA",
+]
 
 
 def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -51,6 +66,40 @@ def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         * math.sin(longitude_delta / 2) ** 2
     )
     return radius_km * 2 * math.atan2(math.sqrt(haversine), math.sqrt(1 - haversine))
+
+
+def _prepare_comparator_display(
+    rows: pd.DataFrame,
+    active_sets: dict[str, str],
+) -> pd.DataFrame:
+    display = rows.copy()
+    display["Project"] = display["display_name"].fillna(display["project_name"])
+    display["Group / developer"] = display.apply(
+        lambda row: row.get("parent_group") or row.get("developer_name") or "N/A",
+        axis=1,
+    )
+    display["Set"] = display["source_project_id"].astype(str).map(
+        lambda code: SET_LABELS.get(active_sets.get(code), "Not in profile")
+    )
+    display["Status"] = display["project_status"].map(display_text)
+    display["Units"] = display["reported_total_units"].map(whole_number)
+    display["Potential GDV"] = display["potential_listed_gdv"].map(money)
+    display["Average unit price"] = display["average_listed_price_per_unit"].map(
+        money
+    )
+    display["Typical price range"] = display.apply(
+        lambda row: numeric_range(
+            row.get("listed_price_p25"),
+            row.get("listed_price_p75"),
+            prefix="RM ",
+        ),
+        axis=1,
+    )
+    display["Unit sales"] = display["sales_percentage"].map(pct)
+    display["Value sold"] = display["value_sold_percentage"].map(pct)
+    display["Construction"] = display["construction_percentage"].map(pct)
+    display["First SPA"] = display["first_spa_date"].map(display_date)
+    return display
 
 
 def _portfolio_table(view: pd.DataFrame, *, key: str):
@@ -223,30 +272,23 @@ def render_groups(
         lambda row: row.get("parent_group") or row.get("developer_name") or "Unmapped",
         axis=1,
     )
-    group_query = st.text_input(
-        "Search groups or projects",
-        placeholder="Parent group, developer, SPV or project",
-        key="group_search",
-    )
-    matching_groups = groups
-    if group_query.strip():
-        needle = group_query.strip().casefold()
-        matching_groups = groups[
-            groups[
-                ["group_name", "developer_name", "display_name", "project_name"]
-            ]
-            .fillna("")
-            .apply(lambda row: needle in " ".join(row.astype(str)).casefold(), axis=1)
-        ]
     group_names = sorted(
-        matching_groups["group_name"].dropna().astype(str).unique(),
+        groups["group_name"].dropna().astype(str).unique(),
         key=str.casefold,
     )
     if not group_names:
         st.info("No groups or projects match the search.")
         return
-    initial = group_names.index(requested_group) if requested_group in group_names else 0
-    selected_group = st.selectbox("Parent group / developer", group_names, index=initial)
+    if requested_group in group_names:
+        st.session_state["group_choice"] = requested_group
+    elif st.session_state.get("group_choice") not in group_names:
+        st.session_state["group_choice"] = group_names[0]
+    selected_group = st.selectbox(
+        "Parent group / developer",
+        group_names,
+        placeholder="Search parent group or developer",
+        key="group_choice",
+    )
     view = groups[groups["group_name"] == selected_group].copy()
     exceptions = view["project_status"].fillna("").str.casefold().str.contains("sakit|lewat|batal")
     total_units = pd.to_numeric(view["reported_total_units"], errors="coerce").sum(min_count=1)
@@ -391,6 +433,17 @@ def render_compare(
         anchor = located_anchors[
             located_anchors["source_project_id"].astype(str) == anchor_code
         ].iloc[0]
+        anchor_display = _prepare_comparator_display(
+            anchor.to_frame().T,
+            active_sets,
+        )
+        anchor_display["Distance"] = "Anchor"
+        st.markdown("##### Anchor project benchmark")
+        st.dataframe(
+            anchor_display[COMPARATOR_COLUMNS],
+            hide_index=True,
+            width="stretch",
+        )
         candidates = located_candidates[
             located_candidates["source_project_id"].astype(str) != anchor_code
         ].copy()
@@ -409,57 +462,12 @@ def render_compare(
         if candidates.empty:
             st.info(f"No tracked projects are within {radius} km.")
         else:
-            candidates["Project"] = candidates["display_name"].fillna(
-                candidates["project_name"]
-            )
-            candidates["Group / developer"] = candidates.apply(
-                lambda row: row.get("parent_group") or row.get("developer_name") or "N/A",
-                axis=1,
-            )
-            candidates["Set"] = candidates["source_project_id"].astype(str).map(
-                lambda code: SET_LABELS.get(active_sets.get(code), "Not in profile")
-            )
+            candidates = _prepare_comparator_display(candidates, active_sets)
             candidates["Distance"] = candidates["distance_km"].map(
                 lambda value: f"{value:.1f} km"
             )
-            candidates["Status"] = candidates["project_status"].map(display_text)
-            candidates["Units"] = candidates["reported_total_units"].map(whole_number)
-            candidates["Potential GDV"] = candidates["potential_listed_gdv"].map(money)
-            candidates["Average unit price"] = candidates[
-                "average_listed_price_per_unit"
-            ].map(money)
-            candidates["Typical unit price"] = candidates[
-                "median_listed_price_per_unit"
-            ].map(money)
-            candidates["Typical price range"] = candidates.apply(
-                lambda row: numeric_range(
-                    row.get("listed_price_p25"), row.get("listed_price_p75"), prefix="RM "
-                ),
-                axis=1,
-            )
-            candidates["Unit sales"] = candidates["sales_percentage"].map(pct)
-            candidates["Value sold"] = candidates["value_sold_percentage"].map(pct)
-            candidates["Construction"] = candidates["construction_percentage"].map(pct)
-            candidates["First SPA"] = candidates["first_spa_date"].map(display_date)
             candidate_event = st.dataframe(
-                candidates[
-                    [
-                        "Project",
-                        "Group / developer",
-                        "Set",
-                        "Distance",
-                        "Status",
-                        "Units",
-                        "Potential GDV",
-                        "Average unit price",
-                        "Typical unit price",
-                        "Typical price range",
-                        "Unit sales",
-                        "Value sold",
-                        "Construction",
-                        "First SPA",
-                    ]
-                ],
+                candidates[COMPARATOR_COLUMNS],
                 hide_index=True,
                 width="stretch",
                 on_select="rerun",
@@ -547,7 +555,6 @@ def render_compare(
         lambda value: signed_number(value, decimals=1, suffix=" pp")
     )
     selected["Potential GDV"] = selected["potential_listed_gdv"].map(money)
-    selected["Typical unit price"] = selected["median_listed_price_per_unit"].map(money)
     selected["Average listed price"] = selected[
         "average_listed_price_per_unit"
     ].map(money)
@@ -570,13 +577,11 @@ def render_compare(
         selected[
             [
                 "Project",
-                "Set",
-                "Status",
                 "Units",
                 "Potential GDV",
-                "Typical unit price",
-                "Typical price range",
                 "Average listed price",
+                "Typical price range",
+                "Set",
                 "Typical recorded SPA",
                 "Average recorded SPA",
                 "SPA price coverage",
@@ -586,6 +591,7 @@ def render_compare(
                 "Sales vs construction",
                 "Remaining value",
                 "Bumi sales",
+                "Status",
             ]
         ],
         hide_index=True,

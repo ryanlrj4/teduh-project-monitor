@@ -35,7 +35,16 @@ def apply_shortlist_metadata(
         tracked = shortlist_by_project.get(str(row.get("source_project_id") or ""))
         if tracked:
             for field in SHORTLIST_OVERLAY_FIELDS:
-                row[field] = tracked.get(field, "")
+                local_value = tracked.get(field, "")
+                if field == "display_name" and not local_value:
+                    row[field] = (
+                        row.get("display_name")
+                        or row.get("project_name")
+                        or row.get("source_project_id")
+                        or ""
+                    )
+                else:
+                    row[field] = local_value
         enriched.append(row)
     return enriched
 

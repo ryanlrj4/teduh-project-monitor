@@ -112,9 +112,16 @@ def normalize_sales_status(status_jualan: Any, availability_status: Any = None) 
 
 def normalize_state(value: Any) -> str | None:
     text = clean_text(value)
-    if text and text.casefold() == "wp kuala lumpur":
-        return "Wp Kuala Lumpur"
-    return text
+    if not text:
+        return None
+    canonical = {
+        "wp kuala lumpur": "Wp Kuala Lumpur",
+        "pulau pinang": "Pulau Pinang",
+        "selangor": "Selangor",
+        "johor": "Johor",
+        "melaka": "Melaka",
+    }
+    return canonical.get(text.casefold(), text)
 
 
 def iso_or_none(value: Any) -> str | None:

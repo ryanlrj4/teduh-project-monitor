@@ -252,3 +252,40 @@ def upsert_shortlist_project(
         _audit_events(existing=previous, updated=normalized, changed_by=changed_by),
     )
     return path
+
+
+def remove_shortlist_project(
+    settings: Settings,
+    project_code: str,
+    *,
+    changed_by: str,
+) -> dict[str, str]:
+    code = str(project_code).strip()
+    rows = load_shortlist(settings)
+    removed = next(
+        (row for row in rows if row["source_project_id"] == code),
+        None,
+    )
+    if removed is None:
+        raise ValueError(f"Project is not tracked: {code}")
+    write_shortlist(
+        settings,
+        [row for row in rows if row["source_project_id"] != code],
+    )
+    _append_audit_rows(
+        settings,
+        [
+            {
+                "event_timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "changed_by": clean_text(changed_by) or "Unspecified",
+                "action": "Project removed",
+                "source_project_id": code,
+                "project_name": removed["display_name"] or code,
+                "field": "",
+                "previous_value": "",
+                "new_value": "",
+                "origin": removed["origin"],
+            }
+        ],
+    )
+    return removed

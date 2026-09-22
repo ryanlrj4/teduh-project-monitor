@@ -23,6 +23,29 @@ def test_apply_shortlist_metadata_overlays_local_fields_without_mutating_source(
     assert current[0]["display_name"] == "TEDUH name"
 
 
+def test_apply_shortlist_metadata_keeps_teduh_name_when_local_name_is_blank() -> None:
+    current = [
+        {
+            "source_project_id": "100-1",
+            "display_name": "Registered TEDUH name",
+            "project_name": "Registered TEDUH name",
+        }
+    ]
+    shortlist = [
+        {
+            "source_project_id": "100-1",
+            "display_name": "",
+            "parent_group": "Parent Berhad",
+            "project_set": "general",
+            "region": "Selangor",
+        }
+    ]
+
+    enriched = apply_shortlist_metadata(current, shortlist)
+
+    assert enriched[0]["display_name"] == "Registered TEDUH name"
+
+
 def test_dataframe_adds_default_region_and_converts_numeric_columns() -> None:
     frame = dataframe(
         [

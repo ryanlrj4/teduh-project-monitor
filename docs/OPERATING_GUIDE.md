@@ -16,8 +16,10 @@ The shortlist can be refreshed manually. The `refresh-if-due` command is intende
 
 Open **Add or edit** in the dashboard.
 
+The Parent group field is searchable and suggests groups already used by the tracked library. Select an existing group to keep naming consistent, or type a new group when it is not yet listed. Project and group finders elsewhere in the dashboard use the same searchable-selector pattern.
+
 - **TEDUH project code** is the public stable key, for example `30031-1`.
-- **Region** is a controlled selection used to verify TEDUH's state and filter the dashboard.
+- **Region** is detected from TEDUH when a new project is saved. Existing projects without a valid observation are checked again on save, so an initially incorrect region can be corrected automatically.
 - **Actual/display name** is optional. Leave it blank to use TEDUH's registered name, or enter the clearer name your team wants to see.
 - **Parent group** is your team's public corporate-group mapping.
 - **Project set** can be `reporting_set`, `comparator_set`, or `general`.
@@ -26,6 +28,10 @@ Open **Add or edit** in the dashboard.
 - **Active** controls whether the project can be refreshed.
 
 Saving a new active TEDUH code immediately retrieves and publishes that project's current public facts. Saving an existing project updates its local fields without making a source request.
+
+Use **Tracked projects** to remove an invalid or no-longer-required project from the master library. Removal also clears the project from saved profiles and the current dashboard, but retains its dated observations and records an audit event.
+
+The **Projects** page always shows the master tracked library. After opening a project's details, use the classification controls to add, reclassify or remove it in the active profile. In the Admin / Master Portfolio, the same control changes the master Reporting, Comparator or General classification; global removal remains under **Tracked projects**.
 
 ## Understanding the refresh
 
@@ -47,6 +53,8 @@ The **Refresh & data quality** page retains a refresh-status panel after Streaml
 The detail page keeps the current overall status, sales, construction, completion and latest movement visible. Less frequently used contractual, component, permit/licensing, local-field, provenance and historical information is placed in collapsible sections.
 
 Sales by component are calculated independently from each `unitGroups[]` collection in TEDUH's unit response. The application never averages component percentages to produce the overall percentage. When TEDUH supplies no friendly block name, the dashboard uses neutral labels such as `Component 1`; it does not infer a tower name from unit-number prefixes.
+
+Nearby comparator analysis displays the selected anchor using the same commercial fields as the candidate rows. Candidate columns prioritise distance, units, potential listed GDV, average unit price and the middle-50% listed price range before monitoring status.
 
 ## Understanding Discovery
 
