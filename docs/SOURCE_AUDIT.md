@@ -5,15 +5,10 @@
 TEDUH, Jabatan Perumahan Negara, Kementerian Perumahan dan Kerajaan Tempatan:
 
 - Project search: <https://teduh.kpkt.gov.my/semakan-status-kemajuan>
-- State lookup: <https://teduh.kpkt.gov.my/api/negeri>
-- District lookup: <https://teduh.kpkt.gov.my/api/daerah-by-negeri?negeri_id=14>
-- City lookup: <https://teduh.kpkt.gov.my/api/bandar-by-daerah?daerah_id=1401>
 - Search request: `GET /api/projek-swasta`
 - Project detail: `GET /api/projek-swasta/{kod_projek}`
 - Unit detail: `GET /api/unit-projek-swasta/{kod_projek}`
 - Robots instructions: <https://teduh.kpkt.gov.my/robots.txt>
-
-No KRI data or documentation is used by this implementation.
 
 ## Access method
 
@@ -51,8 +46,8 @@ The search request uses these parameters:
 
 - `page`
 - `search_type=projek`
-- `state=14`
-- `statusProjek` (`0`, `1`, `2`, or `3` in this project)
+- `state` (the configured TEDUH state ID for the selected region)
+- `statusProjek` (`0`, `1`, `2`, `3`, `5`, or `7`)
 
 TEDUH currently performs pagination on the server and returns `current_page`, `last_page`, `per_page`, and `total`. The server currently returns 20 rows per page.
 
@@ -68,8 +63,8 @@ Unit responses include unit number, development-component identifier, property g
 - The TEDUH page advises the public to confirm unit sales information with the developer.
 - Listed prices have TEDUH applicability warnings for projects that have obtained CCC.
 - SPA prices are frequently missing.
-- District and city labels are incomplete and geographically inconsistent.
-- A live endpoint is not a historical archive. This phase captures one current observation.
+- District labels are incomplete and geographically inconsistent.
+- A live endpoint is not a historical archive. History begins when this application records a project and cannot reconstruct earlier TEDUH states.
 - The HIMS cutoff is a comparability rule for this proof, not a claim that older project permits, CCC/CFO records, or other historical facts are invalid.
 - Public response schemas may change without notice.
 - Some endpoints may return no unit records even when a project-level total is reported.

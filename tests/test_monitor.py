@@ -1,16 +1,7 @@
 from __future__ import annotations
 
-from decimal import Decimal
-
-from teduh_monitor.monitor import build_alerts, project_scale
 from teduh_monitor.config import REGION_CONFIGS
-
-
-def test_project_scale_keeps_unknown_projects_for_review() -> None:
-    assert project_scale(None, "unavailable")[1] == "Review"
-    assert project_scale(Decimal("49999999"), "high")[1] == "Below floor"
-    assert project_scale(Decimal("50000000"), "high")[1] == "Include"
-    assert project_scale(Decimal("1000000000"), "high")[0] == "RM1bn+"
+from teduh_monitor.monitor import build_alerts
 
 
 def test_region_state_mapping_covers_pilot_regions() -> None:

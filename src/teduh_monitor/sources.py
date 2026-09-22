@@ -151,27 +151,6 @@ class TeduhClient:
                     time.sleep(2**attempt)
         raise SourceAnomaly(str(last_error) if last_error else f"Failed to retrieve {path}")
 
-    def states(self) -> SourceResult:
-        return self.get_json(
-            "/api/negeri",
-            params=None,
-            cache_relative=Path("lookups/states.json"),
-        )
-
-    def districts(self) -> SourceResult:
-        return self.get_json(
-            "/api/daerah-by-negeri",
-            params={"negeri_id": STATE_ID},
-            cache_relative=Path("lookups/kl_districts.json"),
-        )
-
-    def cities(self, district_id: str) -> SourceResult:
-        return self.get_json(
-            "/api/bandar-by-daerah",
-            params={"daerah_id": district_id},
-            cache_relative=Path(f"lookups/cities_{district_id}.json"),
-        )
-
     def search_projects(self, status_id: str, page: int, *, state_id: str = STATE_ID) -> SourceResult:
         return self.get_json(
             "/api/projek-swasta",

@@ -15,13 +15,11 @@ FIELD_SPECS: list[tuple[str, str]] = [
     ("developer_license_end_date", "DATE"),
     ("state", "VARCHAR"),
     ("district", "VARCHAR"),
-    ("city", "VARCHAR"),
     ("project_location", "VARCHAR"),
     ("latitude", "DOUBLE"),
     ("longitude", "DOUBLE"),
     ("source_state_value", "VARCHAR"),
     ("source_district_value", "VARCHAR"),
-    ("source_city_value", "VARCHAR"),
     ("permit_number", "VARCHAR"),
     ("permit_start_date", "DATE"),
     ("permit_end_date", "DATE"),
@@ -113,9 +111,6 @@ MANUAL_FIELD_SPECS: list[tuple[str, str]] = [
     ("tracking_notes", "VARCHAR"),
     ("shortlist_active", "VARCHAR"),
     ("shortlist_origin", "VARCHAR"),
-    ("project_scale_band", "VARCHAR"),
-    ("commercial_scope", "VARCHAR"),
-    ("commercial_scope_reason", "VARCHAR"),
 ]
 SHORTLIST_FIELD_SPECS = MANUAL_FIELD_SPECS + FIELD_SPECS
 SHORTLIST_FIELDS = [name for name, _ in SHORTLIST_FIELD_SPECS]

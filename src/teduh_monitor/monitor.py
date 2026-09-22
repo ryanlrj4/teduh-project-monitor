@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, timedelta
-from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable
 
@@ -74,35 +73,9 @@ def detect_project_region(
     )
 
 
-def project_scale(gdv: Any, confidence: str | None) -> tuple[str, str, str]:
-    if gdv is None or confidence in {None, "low", "unavailable"}:
-        return (
-            "Review required",
-            "Review",
-            "Reliable project GDV is unavailable, so the project is not automatically excluded",
-        )
-    value = Decimal(str(gdv))
-    if value < Decimal("50000000"):
-        return (
-            "Below RM50m",
-            "Below floor",
-            "Reliable potential listed GDV is below the RM50m screening floor",
-        )
-    if value < Decimal("100000000"):
-        return "RM50m–<RM100m", "Include", "Meets the RM50m project-GDV screening floor"
-    if value < Decimal("500000000"):
-        return "RM100m–<RM500m", "Include", "Core commercial-scale project GDV"
-    if value < Decimal("1000000000"):
-        return "RM500m–<RM1bn", "Include", "Large-scale project GDV"
-    return "RM1bn+", "Include", "Major project GDV"
-
-
 def _apply_shortlist_metadata(
     record: dict[str, Any], tracked: dict[str, str]
 ) -> dict[str, Any]:
-    scale_band, commercial_scope, scope_reason = project_scale(
-        record.get("potential_listed_gdv"), str(record.get("gdv_confidence") or "")
-    )
     record.update(
         {
             "region": tracked["region"],
@@ -119,9 +92,6 @@ def _apply_shortlist_metadata(
             "tracking_notes": tracked["tracking_notes"],
             "shortlist_active": tracked["active"],
             "shortlist_origin": tracked["origin"],
-            "project_scale_band": scale_band,
-            "commercial_scope": commercial_scope,
-            "commercial_scope_reason": scope_reason,
         }
     )
     return record

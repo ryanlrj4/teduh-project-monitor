@@ -12,7 +12,7 @@ These are analytical calculations, not official TEDUH financial or sales metrics
 
 `statusJualan` is primary and the lower-level availability `status` is a fallback.
 
-Booked/reserved and unknown counts remain internal validation inputs. They are omitted from the user-facing CSV and Parquet because both categories are zero in the observed eligible population. The pipeline still checks them so a future TEDUH vocabulary change cannot be silently treated as sold or unsold.
+Booked/reserved and unknown counts remain explicit validation fields in the published data. The pipeline checks them so a future TEDUH vocabulary change cannot be silently treated as sold or unsold.
 
 ## Unit coverage
 

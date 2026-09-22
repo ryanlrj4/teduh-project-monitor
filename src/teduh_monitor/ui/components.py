@@ -385,7 +385,7 @@ def render_project_details(
             if pd.notna(discount):
                 st.caption(f"Median recorded discount to listed price: {pct(discount)}")
             if not inventory_rows:
-                st.info("Inventory detail will appear after the next TEDUH refresh using v1.5.")
+                st.info("No remaining inventory detail is available.")
             else:
                 inventory = pd.DataFrame(inventory_rows)
                 inventory["Property type"] = inventory["property_type"].map(display_text)

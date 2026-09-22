@@ -35,11 +35,10 @@ These fields are entered locally and are not claimed to come from TEDUH.
 
 | Original field | Normalized field | Source response | Type | Meaning | Null handling | Example |
 |---|---|---|---|---|---|---|
-| `projek.negeri` | `state` | project detail | text | Project state; primary KL filter comes from search `state=14` | Standardize harmless case only | `Wp Kuala Lumpur` |
+| `projek.negeri` | `state` | project detail | text | Project state, checked against the selected configured region | Standardize harmless case only | `Wp Kuala Lumpur` |
 | `projek.daerah` | `district` | project detail | text | Project district | `-` becomes null | `Kuala Lumpur` |
-| `kod_bandar_id` plus city lookup | `city` | search/lookup | text | TEDUH administrative city label | Missing code becomes null | `Mukim Kuala Lumpur` |
-| `lokasi`, `lat`, `lng` | `project_location`, `latitude`, `longitude` | project detail | text/decimal | Public TEDUH location and coordinates retained for detail display and future maps | Invalid coordinates become null | `Kuala Lumpur`, `3.140352` |
-| Same location fields | `source_*_value` | detail/lookup | text | Original cleaned source label retained for traceability | Retain null | `Wp Kuala Lumpur` |
+| `lokasi`, `lat`, `lng` | `project_location`, `latitude`, `longitude` | project detail | text/decimal | Public TEDUH location and coordinates used by project-detail and comparison maps | Invalid coordinates become null | `Kuala Lumpur`, `3.140352` |
+| Same state and district fields | `source_state_value`, `source_district_value` | project detail | text | Original cleaned source labels retained for traceability | Retain null | `Wp Kuala Lumpur` |
 | `projek.permitNo` | `permit_number` | project detail | text | Current advertising and sales permit | Retain null | `31274-1/04-2029/0279(N)-(S)` |
 | `projek.permitMula` | `permit_start_date` | project detail | date | Permit start date | Invalid/`-` becomes null | `2026-04-10` |
 | `projek.permitTamat` | `permit_end_date` | project detail | date | Permit end date | Invalid/`-` becomes null | `2029-04-09` |

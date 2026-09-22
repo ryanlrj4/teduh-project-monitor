@@ -77,13 +77,10 @@ Current-state alerts include:
 
 After more than one dated observation, change alerts can also flag status changes, sold-unit decreases, construction decreases, and a new CCC/CFO result. Alerts are review prompts, not automated credit conclusions.
 
-
-## Source and reuse boundary
-
-The seeded shortlist contains public TEDUH project codes/names and permitted public parent-group mappings only. It excludes CHGP nett pricing, analyst notes, competitor reasoning, and company-specific analysis.
+## Source boundary
 
 TEDUH remains the source of project facts. Local labels and mappings are visibly separate so an analyst can tell what came from the source and what the team entered.
 
 ## If something fails
 
-Read the dashboard error without deleting existing output files. Common causes are a temporary TEDUH outage or network restriction. The last verified current snapshot and history remain intact. Retry later; do not use `--force` repeatedly.
+Read the dashboard error without deleting existing output files. Common causes are a temporary TEDUH outage or network restriction. The last verified current snapshot and history remain intact. Retry later.

@@ -24,9 +24,6 @@ The client uses the JSON endpoints consumed by the public TEDUH frontend:
 GET https://teduh.kpkt.gov.my/api/projek-swasta
 GET https://teduh.kpkt.gov.my/api/projek-swasta/{project_code}
 GET https://teduh.kpkt.gov.my/api/unit-projek-swasta/{project_code}
-GET https://teduh.kpkt.gov.my/api/negeri
-GET https://teduh.kpkt.gov.my/api/daerah-by-negeri
-GET https://teduh.kpkt.gov.my/api/bandar-by-daerah
 ```
 
 The search endpoint is paginated and filtered by state and project status. Project detail and unit endpoints use TEDUH's stable project code, for example `20209-1`.

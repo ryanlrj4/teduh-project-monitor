@@ -335,7 +335,6 @@ def calculate_project_metrics(
     search_project: dict[str, Any],
     detail: dict[str, Any] | None,
     units_payload: dict[str, Any] | None,
-    city_lookup: dict[str, str],
     snapshot_date: str,
     source_dataset_as_of: str,
     retrieved_at: str,
@@ -565,7 +564,6 @@ def calculate_project_metrics(
     latest_licence = developer.get("latest_lesen") or search_project.get("latest_lesen") or {}
     project_state = project.get("negeri")
     district_value = project.get("daerah")
-    city_value = city_lookup.get(str(search_project.get("kod_bandar_id") or ""))
     permit_start_date = iso_or_none(project.get("permitMula") or latest_licence.get("tarikh_mula"))
     first_spa_date = iso_or_none(pjb.get("tarikhPjbPertama"))
     hims_reference_date, hims_reference_basis = hims_project_reference(
@@ -587,13 +585,11 @@ def calculate_project_metrics(
         "developer_license_end_date": iso_or_none(latest_licence.get("tarikh_luput")),
         "state": normalize_state(project_state) or "Wp Kuala Lumpur",
         "district": clean_text(district_value),
-        "city": clean_text(city_value),
         "project_location": clean_text(detail.get("lokasi")),
         "latitude": _float_or_none(detail.get("lat")),
         "longitude": _float_or_none(detail.get("lng")),
         "source_state_value": clean_text(project_state),
         "source_district_value": clean_text(district_value),
-        "source_city_value": clean_text(city_value),
         "permit_number": clean_text(project.get("permitNo") or latest_licence.get("no_lesenpermit")),
         "permit_start_date": permit_start_date,
         "permit_end_date": iso_or_none(project.get("permitTamat") or latest_licence.get("tarikh_luput")),
