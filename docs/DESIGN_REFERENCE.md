@@ -1,9 +1,5 @@
 # Dashboard design reference
 
-The dashboard styling is based on observable presentation choices on the public
-[OCBC Malaysia website](https://www.ocbc.com.my/group/gateway), reviewed on
-16 August 2026. It does not copy OCBC content, logos, imagery, or page layouts.
-
 ## Core tokens
 
 | Role | Value |
